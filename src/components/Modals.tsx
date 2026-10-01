@@ -3,7 +3,7 @@ import { useStore } from '../lib/context';
 import { Avatar } from './Avatar';
 import { MemojiPicker } from './MemojiPicker';
 import { Memoji } from './Memoji';
-import { parseMemoji } from '../lib/memoji';
+import { useMemojiSpec } from '../lib/useMemoji';
 import { isAddressable, makeContact } from '../lib/contacts';
 import { IconCheck, IconPlus, IconSearch } from './Icons';
 
@@ -181,7 +181,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const s = state.settings;
   const fileRef = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const myMemoji = parseMemoji(state.me.avatar);
+  const myMemoji = useMemojiSpec(state.me.avatar);
   const [editingMemoji, setEditingMemoji] = useState(false);
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

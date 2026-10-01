@@ -1,6 +1,6 @@
 import type { Chat, Contact } from '../types';
 import { Memoji } from './Memoji';
-import { parseMemoji } from '../lib/memoji';
+import { useMemojiSpec } from '../lib/useMemoji';
 
 export function Avatar({
   contact,
@@ -11,10 +11,11 @@ export function Avatar({
   size?: number;
   className?: string;
 }) {
+  // hooks run before the empty-slot bail-out so the order never changes
+  const memoji = useMemojiSpec(contact?.avatar);
   if (!contact) {
     return <div className={`avatar ${className}`} style={{ background: '#8e8e93' }} />;
   }
-  const memoji = parseMemoji(contact.avatar);
   const style: React.CSSProperties = {
     background: memoji ? 'transparent' : `linear-gradient(160deg, ${contact.color[0]}, ${contact.color[1]})`,
   };

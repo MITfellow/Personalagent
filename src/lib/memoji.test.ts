@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { MEMOJI, MEMOJI_BY_ID, memojiRef, parseMemoji } from './memoji';
+import {
+  HAIR_STYLES,
+  MEMOJI,
+  MEMOJI_BY_ID,
+  SKIN_TONES,
+  allMemoji,
+  blankMemoji,
+  isCustomId,
+  memojiRef,
+  parseMemoji,
+  randomMemoji,
+  setCustomMemoji,
+} from './memoji';
 
 describe('memoji', () => {
   it('ships a full picker grid with unique ids and names', () => {
@@ -28,5 +40,51 @@ describe('memoji', () => {
       expect(m.skin).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(m.shade).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }
+  });
+});
+
+describe('custom characters', () => {
+  it('resolves a custom character ahead of the built-in cast', () => {
+    const mine = { ...blankMemoji(), id: 'my-abc', name: 'Riya' };
+    expect(parseMemoji('memoji:my-abc')).toBeUndefined();
+    setCustomMemoji([mine]);
+    expect(parseMemoji('memoji:my-abc')).toBe(mine);
+    expect(parseMemoji('memoji:ari')?.name).toBe('Ari'); // stock still resolves
+    setCustomMemoji([]);
+    expect(parseMemoji('memoji:my-abc')).toBeUndefined();
+  });
+
+  it('lists mine first, then the stock cast', () => {
+    const mine = { ...blankMemoji(), id: 'my-xyz' };
+    const list = allMemoji([mine]);
+    expect(list[0]).toBe(mine);
+    expect(list).toHaveLength(MEMOJI.length + 1);
+  });
+
+  it('tells a custom id from a built-in one', () => {
+    expect(isCustomId(blankMemoji().id)).toBe(true);
+    for (const m of MEMOJI) expect(isCustomId(m.id)).toBe(false);
+  });
+
+  it('starts blank characters unique and complete', () => {
+    const a = blankMemoji();
+    const b = blankMemoji();
+    expect(a.id).not.toBe(b.id);
+    expect(a.bg).toHaveLength(2);
+    expect(a.skin).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  });
+
+  it('randomises every trait but keeps identity', () => {
+    const base = blankMemoji();
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const r = randomMemoji(base);
+      expect(r.id).toBe(base.id);
+      expect(r.name).toBe(base.name);
+      expect(HAIR_STYLES.some((s) => s.id === r.style)).toBe(true);
+      expect(SKIN_TONES.some(([skin]) => skin === r.skin)).toBe(true);
+      seen.add(`${r.style}|${r.skin}|${r.mouth}`);
+    }
+    expect(seen.size).toBeGreaterThan(5); // actually shuffling, not stuck
   });
 });

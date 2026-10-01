@@ -40,6 +40,8 @@ bubbles carry the two trailing dots that make them read as tiny speech bubbles.
 
 ![Memoji picker](docs/memoji-pass.png)
 
+![Memoji studio](docs/memoji-studio.png)
+
 ## What's in it
 
 ### Conversation list
@@ -96,6 +98,17 @@ places: **Settings → Your Memoji** for yourself, and the **details panel hero*
 The choice is stored on the record as `memoji:<id>` and immediately replaces the initials
 everywhere that person appears — pinned grid, conversation rows, group avatar stacks, thread
 header, details hero. *Use initials instead* undoes it.
+
+**Memoji studio.** The **New** tile opens a builder: ten skin tones, nine hairstyles, eight hair
+colours, glasses, facial hair, mouth, blush, earrings and eight backdrops, all editing one spec
+with a 104px live preview — plus *Surprise me*, which shuffles every trait at once. Characters you
+build are saved to the store, sort to the front of the grid, and carry an **Edit** badge
+(double-click works too). Deleting one also strips it from everyone wearing it, so no record is
+left pointing at an avatar that can't be resolved.
+
+`<Avatar>` resolves refs through the `useMemojiSpec` hook rather than a module lookup: a module
+registry is invisible to React, so saving a character wouldn't re-render the avatars wearing it.
+The registry in `memoji.ts` is still mirrored from the provider for non-component callers.
 
 ### Quick Look
 Click any photo — in a bubble or in the details grid — to open a full-screen viewer: ←/→ step

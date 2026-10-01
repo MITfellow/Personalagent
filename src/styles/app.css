@@ -2519,3 +2519,144 @@
 .memoji-picker .panel-label:empty {
   display: none;
 }
+
+/* ---------- Memoji studio ---------- */
+.new-memoji-disc {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--text-2);
+  background: var(--bg-elevated);
+  border: 1.5px dashed var(--hairline);
+}
+.memoji-tile:hover .new-memoji-disc {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+.memoji-tile.is-custom {
+  position: relative;
+}
+.memoji-edit {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+.memoji-tile.is-custom:hover .memoji-edit,
+.memoji-edit:focus-visible {
+  opacity: 1;
+}
+.studio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.studio-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px 12px;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--hairline-soft);
+}
+.studio-name {
+  width: 150px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 0.5px solid var(--hairline);
+  color: var(--text);
+}
+.studio-name:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+.studio-shuffle {
+  font-size: 12.5px;
+  color: var(--blue);
+}
+.studio-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.studio-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3, var(--text-2));
+  margin-bottom: 5px;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  transition: transform 0.12s;
+}
+.swatch:hover {
+  transform: scale(1.08);
+}
+.swatch.on {
+  border-color: var(--blue);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.12),
+    0 0 0 1.5px var(--bg);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--hairline);
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.chip:hover {
+  background: var(--row-hover);
+}
+.chip.on {
+  background: var(--blue);
+  border-color: transparent;
+  color: #fff;
+}
+.studio-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+.studio-delete {
+  margin-right: auto;
+}

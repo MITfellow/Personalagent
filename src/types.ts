@@ -1,3 +1,4 @@
+import type { MemojiSpec } from './lib/memoji';
 export type Tapback = 'heart' | 'like' | 'dislike' | 'haha' | 'emphasize' | 'question';
 
 export const TAPBACKS: { id: Tapback; glyph: string; label: string }[] = [
@@ -122,6 +123,8 @@ export interface Store {
   messages: Message[];
   activeChatId: string | null;
   me: { name: string; handle: string; avatar?: string };
+  /** characters you built in the Memoji studio */
+  customMemoji?: MemojiSpec[];
   settings: {
     theme: 'light' | 'dark' | 'system';
     sounds: boolean;

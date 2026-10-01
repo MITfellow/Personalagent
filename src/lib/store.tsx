@@ -5,6 +5,7 @@ import { StoreContext, type Ctx, type SendOptions } from './context';
 import { buildSeedStore } from '../data/seed';
 import { composeReply } from './bot';
 import { playReceive, playSend, playTapback, setSoundEnabled } from './sound';
+import { setCustomMemoji } from './memoji';
 import { clearState, exportState, importState, loadState, saveState } from './persist';
 import { notify, notificationsAllowed, requestNotificationPermission } from './notify';
 
@@ -47,6 +48,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [resolvedTheme]);
 
   useEffect(() => setSoundEnabled(state.settings.sounds), [state.settings.sounds]);
+
+  // keep the avatar registry in step so <Avatar> can resolve custom characters
+  // without every call site passing the list down
+  useEffect(() => setCustomMemoji(state.customMemoji), [state.customMemoji]);
 
   // persistence (debounced, quota-aware)
   useEffect(() => {

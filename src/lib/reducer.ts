@@ -1,4 +1,5 @@
 import type { Chat, Contact, Message, Store, Tapback } from '../types';
+import type { MemojiSpec } from './memoji';
 
 export type Action =
   | { type: 'select'; chatId: string | null }
@@ -18,6 +19,8 @@ export type Action =
   | { type: 'rename'; chatId: string; name: string }
   | { type: 'read-all'; chatId: string }
   | { type: 'me'; patch: Partial<Store['me']> }
+  | { type: 'save-memoji'; spec: MemojiSpec }
+  | { type: 'delete-memoji'; id: string }
   | { type: 'add-contact'; contact: Contact }
   | { type: 'update-contact'; id: string; patch: Partial<Contact> }
   | { type: 'delete-contact'; id: string }
@@ -130,6 +133,33 @@ export function reducer(state: Store, action: Action): Store {
       return { ...state, chats: [action.chat, ...state.chats], activeChatId: action.chat.id };
     case 'me':
       return { ...state, me: { ...state.me, ...action.patch } };
+
+    // one action for create and edit: the studio hands back a whole spec
+    case 'save-memoji': {
+      const list = state.customMemoji ?? [];
+      const at = list.findIndex((m) => m.id === action.spec.id);
+      const customMemoji =
+        at === -1 ? [...list, action.spec] : list.map((m) => (m.id === action.spec.id ? action.spec : m));
+      return { ...state, customMemoji };
+    }
+
+    // deleting a character also takes it off anyone wearing it, so nothing is
+    // left pointing at an avatar that can no longer be resolved
+    case 'delete-memoji': {
+      const list = state.customMemoji ?? [];
+      if (!list.some((m) => m.id === action.id)) return state;
+      const ref = `memoji:${action.id}`;
+      const contacts = { ...state.contacts };
+      for (const [id, c] of Object.entries(contacts)) {
+        if (c.avatar === ref) contacts[id] = { ...c, avatar: undefined };
+      }
+      return {
+        ...state,
+        customMemoji: list.filter((m) => m.id !== action.id),
+        contacts,
+        me: state.me.avatar === ref ? { ...state.me, avatar: undefined } : state.me,
+      };
+    }
 
     case 'add-contact':
       return { ...state, contacts: { ...state.contacts, [action.contact.id]: action.contact } };
