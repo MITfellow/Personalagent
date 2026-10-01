@@ -4,6 +4,7 @@
  * keystroke-to-paint, thread switching, search, and main-thread long tasks.
  *
  *   node scripts/bench.mjs                      # against the dev server
+ *   node scripts/bench.mjs <url> <chats> <perChat>   # e.g. 100 300 = 30k msgs
  *   npm run build && npx vite preview --port 4173
  *   node scripts/bench.mjs http://localhost:4173
  *
@@ -11,25 +12,67 @@
  * runtime, so they run roughly 2x worse than the build a user gets. Compare
  * like with like.
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as esbuild from 'esbuild';
 import { chromium } from 'playwright';
 
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
 const URL = process.argv[2] ?? 'http://localhost:5173';
-const CHATS = 40, PER = 150;
+const CHATS = Number(process.argv[3] ?? 40), PER = Number(process.argv[4] ?? 150);
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 860 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 
-// build the payload in a throwaway page, then inject it before the app boots
-const seed = await p.goto(URL, { waitUntil: 'networkidle' }).then(async () => {
-  return await p.evaluate(async ([c, n]) => {
-    const { buildStressStore } = await import('/src/test/stress.ts');
-    const s = buildStressStore(c, n);
-    return { payload: JSON.stringify({ version: 3, savedAt: Date.now(), state: s }), count: s.messages.length };
-  }, [CHATS, PER]);
+// The store generator is TypeScript, and a production preview only serves the
+// built bundle — so bundle it here and hand the page plain JS. That keeps one
+// copy of the generator for both the dev and preview targets.
+const bundled = await esbuild.build({
+  entryPoints: [path.join(root, 'src/test/stress.ts')],
+  bundle: true,
+  format: 'iife',
+  globalName: 'Stress',
+  write: false,
+  logLevel: 'silent',
 });
+const generator = bundled.outputFiles[0].text;
+
+// build the payload in a throwaway page, then inject it before the app boots
+await p.goto(URL, { waitUntil: 'networkidle' });
+const seed = await p.evaluate(
+  ([c, n, src]) => {
+    // eslint-disable-next-line no-new-func
+    const s = new Function(`${src}; return Stress.buildStressStore(${c}, ${n});`)();
+    return { payload: JSON.stringify({ version: 3, savedAt: Date.now(), state: s }), count: s.messages.length };
+  },
+  [CHATS, PER, generator],
+);
 const total = seed.count;
-await p.addInitScript((payload) => {
-  localStorage.setItem('messages.app.state', payload);
+console.log(`seeding ${total} messages (${(seed.payload.length / 1048576).toFixed(2)} MB)`);
+// The account lives in IndexedDB now, which is also the only way to seed a
+// payload past the ~5 MB localStorage ceiling. Write it from a plain asset on
+// the same origin rather than from the app: a booted app saves its own (empty)
+// store a moment later and would race the seed straight back out.
+await p.goto(`${URL.replace(/\/$/, '')}/robots.txt`, { waitUntil: 'load' });
+await p.evaluate(async (payload) => {
+  const env = JSON.parse(payload);
+  const db = await new Promise((res, rej) => {
+    const r = indexedDB.open('messages', 1);
+    r.onupgradeneeded = () => {
+      if (!r.result.objectStoreNames.contains('app')) r.result.createObjectStore('app');
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  await new Promise((res, rej) => {
+    const tx = db.transaction('app', 'readwrite');
+    tx.objectStore('app').put(env, 'state');
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+  db.close();
+  localStorage.removeItem('messages.app.state');
 }, seed.payload);
 
 // ---- cold load ----

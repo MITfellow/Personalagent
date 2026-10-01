@@ -248,6 +248,66 @@ unsaved work **and** nothing else has written since — otherwise a stale backgr
 copy over a newer one. And a `storage` listener means a second window adopts the newer state
 instead of racing it.
 
+## Storage
+
+Everything lives on the device — there is no server. That storage used to be
+`localStorage`, which browsers cap at roughly **5 MB**, and the app was already
+hitting the wall:
+
+- A 30,000-message account (6.5 MB) could not be written **at all**. The save
+  silently failed and the app booted **empty** on the next visit.
+- To stay under the cap, the quota handler **deleted the user's photos**,
+  leaving behind attachments named `Photo (freed to save space)`. Losing user
+  data to make room for user data is not a storage strategy.
+- Every save ran `JSON.stringify` over the whole account — 1.3 MB of string
+  building on the main thread, off a timer.
+
+The account now lives in **IndexedDB** (`src/lib/db.ts`, a small dependency-free
+promise wrapper; database `messages`, object store `app`). The state is stored
+as a **structured clone** rather than JSON, so the stringify disappears from the
+write path entirely.
+
+| account | before | after |
+|---|---|---|
+| 6,000 messages (1.3 MB) | saved | saved, load 176 ms |
+| 14,400 messages (3.1 MB) | saved, near the cap | saved, load 284 ms |
+| 30,000 messages (6.5 MB) | **boots empty** | saved, load 236 ms, 0 long tasks |
+| 100,000 messages (21.7 MB) | **boots empty** | saved, load 442 ms |
+| photos in a large account | deleted to free space | kept |
+
+Typing stays at 14 ms per keystroke and thread switches at ~150 ms even on the
+100,000-message account.
+
+### Keeping it honest
+
+Moving the home of record is the kind of change that quietly eats data, so the
+edges are the interesting part:
+
+- **Nothing is stranded.** A load reads *both* IndexedDB and `localStorage` and
+  takes whichever envelope has the newer `savedAt`. An account written by an
+  older build is picked up, migrated forward, and the legacy copy is then
+  deleted so it can never shadow the database.
+- **Writes are serialised.** Two saves in flight can complete out of order; the
+  migration write kicked off at boot really did land on top of messages sent a
+  second later. Saves now run in a chain, and one already superseded by a newer
+  save is dropped rather than written — which also coalesces bursts.
+- **The seed never overwrites the account.** Reading the database is async, so
+  the app briefly holds an empty store. Persistence is gated behind a `booted`
+  flag, and the window renders a spinner instead of flashing "No Conversations"
+  at someone who has hundreds.
+- **Closing the tab still saves.** IndexedDB has no synchronous write, so the
+  `pagehide` escape hatch writes `localStorage` (with a newer stamp) and the
+  next load migrates it straight back.
+- **Tabs stay in sync.** A `BroadcastChannel` announces each write with the
+  writing tab's id; other tabs re-read and adopt it, and ignore their own echo.
+- **`localStorage` is still the fallback**, quota handling and all, for any
+  browser where IndexedDB is unavailable or blocked (private windows, hardened
+  profiles).
+
+Covered by unit tests against a real IndexedDB (`fake-indexeddb`) and by
+`e2e/storage.spec.ts`, which seeds an 8 MB account, reloads, proves every photo
+survived, and asserts the same payload is still refused by `localStorage`.
+
 ## Production
 
 Everything needed to actually ship this, not just demo it.

@@ -65,11 +65,10 @@ test('a reply quote hugs its text instead of stretching the column', async ({ pa
 });
 
 test('elevated surfaces are distinguishable from the sidebar in dark mode', async ({ page }) => {
-  await page.evaluate(() => {
-    const k = 'messages.app.state';
-    const env = JSON.parse(localStorage.getItem(k)!);
+  await page.evaluate(async () => {
+    const env = (await window.__store.read())!;
     env.state.settings.theme = 'dark';
-    localStorage.setItem(k, JSON.stringify(env));
+    await window.__store.write(env);
   });
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

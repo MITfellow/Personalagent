@@ -13,19 +13,54 @@ import {
   importState,
   loadState,
   saveState,
+  saveToLocal,
   storageChangedElsewhere,
 } from './persist';
 import { notify, notificationsAllowed, requestNotificationPermission } from './notify';
 
+const SYNC_CHANNEL = 'messages.sync';
+
 let uid = 0;
+
+/**
+ * Identifies this tab on the sync channel so a tab can ignore the echo of its
+ * own write. The module is evaluated once per document, which is exactly the
+ * lifetime we want.
+ */
+const TAB_ID = `${Date.now().toString(36)}-${(Math.random() * 1e9).toString(36)}`;
 const newId = () => `u${Date.now().toString(36)}${(uid++).toString(36)}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, loadState);
+  // IndexedDB is async, so the app starts on an empty seed and swaps in the
+  // real store once it has loaded. `booted` gates persistence: writing before
+  // the load resolves would stamp the seed over the user's account.
+  const [state, dispatch] = useReducer(reducer, undefined, buildSeedStore);
+  const [booted, setBooted] = useState(false);
+  const bootedRef = useRef(false);
   const stateRef = useRef(state);
   const savedRef = useRef<Store | null>(null);
-  // what we loaded is, by definition, already in storage
-  if (savedRef.current === null) savedRef.current = state;
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadState()
+      .then((loaded) => {
+        if (cancelled) return;
+        stateRef.current = loaded;
+        savedRef.current = loaded; // it came from storage; nothing to write back
+        dispatch({ type: 'replace', store: loaded });
+      })
+      .catch(() => {
+        /* fall back to the seed already in state */
+      })
+      .finally(() => {
+        if (cancelled) return;
+        bootedRef.current = true;
+        setBooted(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [effect, setEffect] = useState<ScreenEffect>('none');
   const [systemDark, setSystemDark] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
@@ -77,18 +112,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
+  /** tell other tabs a write landed so they can reload from the database */
+  const broadcast = useCallback((_next: Store) => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    try {
+      const chan = new BroadcastChannel(SYNC_CHANNEL);
+      chan.postMessage({ tab: TAB_ID, at: Date.now() });
+      chan.close();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
+    if (!booted) return;
     let idle = 0;
     const write = () => {
-      const res = saveState(state);
-      savedRef.current = state;
-      if (!res.ok) {
-        setStorageIssue(
-          res.reason === 'quota'
-            ? 'Storage is full — older photos were freed to keep saving your messages.'
-            : 'This browser blocked local storage, so changes will not be saved.',
-        );
-      }
+      void saveState(state).then((res) => {
+        savedRef.current = state;
+        broadcast(state);
+        if (!res.ok) {
+          setStorageIssue(
+            res.reason === 'quota'
+              ? 'Storage is full — older photos were freed to keep saving your messages.'
+              : 'This browser blocked local storage, so changes will not be saved.',
+          );
+        }
+      });
     };
 
     const t = window.setTimeout(() => {
@@ -102,39 +152,54 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       window.clearTimeout(t);
       if (idle && window.cancelIdleCallback) window.cancelIdleCallback(idle);
     };
-  }, [state]);
+  }, [state, booted, broadcast]);
 
   /**
-   * Another tab (or anything else writing our key) wins: adopt its state
-   * instead of racing it. Without this two open windows quietly overwrite each
-   * other's messages.
+   * Cross-tab sync. IndexedDB fires no events, so writes are announced on a
+   * BroadcastChannel and the other tabs reload from the database. The
+   * `storage` listener stays for the localStorage fallback path.
    */
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY || !e.newValue) return;
-      const next = loadState();
+    if (!booted) return;
+    const adopt = async () => {
+      const next = await loadState().catch(() => null);
       if (!next) return;
       savedRef.current = next;
       stateRef.current = next;
       dispatch({ type: 'replace', store: next });
     };
+
+    const chan = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL) : null;
+    if (chan) {
+      chan.onmessage = (e) => {
+        if (e.data?.tab === TAB_ID) return; // our own write
+        void adopt();
+      };
+    }
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || !e.newValue) return;
+      void adopt();
+    };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+
+    return () => {
+      chan?.close();
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [booted]);
 
   /**
-   * A tab can be hidden or closed mid-debounce, so flush on the way out — but
-   * only when there is something unsaved. Writing unconditionally lets a stale
-   * background tab stamp its copy over a newer one from another tab.
+   * A tab can be hidden or closed mid-debounce. IndexedDB has no synchronous
+   * write, so the escape hatch is localStorage: it carries a newer `savedAt`
+   * than the database, and the next load prefers it and migrates it back.
    */
   useEffect(() => {
     const flush = () => {
-      // nothing of ours is pending
+      if (!bootedRef.current) return;
       if (savedRef.current === stateRef.current) return;
-      // somebody else (another tab) wrote after us — their copy is newer than
-      // whatever this tab is holding, so leave it alone
       if (storageChangedElsewhere()) return;
-      saveState(stateRef.current);
+      saveToLocal(stateRef.current);
       savedRef.current = stateRef.current;
     };
     const onHide = () => {
@@ -349,9 +414,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const reset = useCallback(() => {
-    clearState();
-    dispatch({ type: 'replace', store: buildSeedStore() });
-  }, []);
+    const fresh = buildSeedStore();
+    savedRef.current = fresh;
+    stateRef.current = fresh;
+    dispatch({ type: 'replace', store: fresh });
+    // clear after the swap, and write the empty store so a pending save or
+    // another tab cannot resurrect what was just deleted
+    void clearState()
+      .then(() => saveState(fresh))
+      .then(() => broadcast(fresh));
+  }, [broadcast]);
 
   const exportData = useCallback(() => exportState(state), [state]);
 
@@ -374,6 +446,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value: Ctx = {
     state,
+    booted,
     dispatch,
     activeChat,
     messagesFor,

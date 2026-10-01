@@ -53,7 +53,7 @@ test('settings persist across a reload', async ({ page }) => {
   await page.getByText('Dark', { exact: true }).click();
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.waitForTimeout(500); // debounced write to localStorage
+  await page.waitForTimeout(500); // debounced write to the database
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });

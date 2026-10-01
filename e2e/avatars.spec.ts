@@ -10,13 +10,11 @@ async function openSettings(page: import('@playwright/test').Page, isMobile: boo
   // on mobile the sidebar toolbar only exists in the list pane, and the seeded
   // world opens straight into a thread — close it so the list is showing
   if (isMobile) {
-    await page.evaluate(() => {
-      const raw = localStorage.getItem('messages.app.state');
-      if (!raw) return;
-      const env = JSON.parse(raw);
+    await page.evaluate(async () => {
+      const env = await window.__store.read();
+      if (!env) return;
       env.state.activeChatId = null;
-      env.savedAt = Date.now();
-    localStorage.setItem('messages.app.state', JSON.stringify(env));
+      await window.__store.write(env);
     });
     await page.reload();
   }
@@ -41,14 +39,11 @@ test('I can pick my own Memoji and it sticks across a reload', async ({ page, is
   await expect(page.locator('.me-card svg')).toBeVisible();
 
   // persistence is debounced; wait for the write before cycling the page
-  await page.waitForFunction(
-    (label) => {
-      const raw = localStorage.getItem('messages.app.state');
-      return !!raw && typeof JSON.parse(raw)?.state?.me?.avatar === 'string' && !!label;
-    },
-    name,
-    { timeout: 5000 },
-  );
+  await expect
+    .poll(async () =>
+      page.evaluate(async () => typeof (await window.__store.read())?.state?.me?.avatar === 'string'),
+    )
+    .toBe(true);
   await page.reload();
   await openSettings(page, isMobile);
   await expect(page.locator('.me-card svg')).toBeVisible();
@@ -61,11 +56,10 @@ test('a contact Memoji replaces their initials everywhere at once', async ({ pag
   await page.goto('/');
   await page.locator('.conv-row, .pinned-item').first().waitFor();
   await page.waitForTimeout(600);
-  await page.evaluate(() => {
-    const raw = JSON.parse(localStorage.getItem('messages.app.state') as string);
-    raw.state.settings.showDetails = true;
-    raw.savedAt = Date.now();
-    localStorage.setItem('messages.app.state', JSON.stringify(raw));
+  await page.evaluate(async () => {
+    const env = (await window.__store.read())!;
+    env.state.settings.showDetails = true;
+    await window.__store.write(env);
   });
   await page.reload();
 
@@ -97,11 +91,10 @@ test('I can build my own character, wear it, edit it and delete it', async ({ pa
   await page.goto('/');
   await page.locator('.conv-row, .pinned-item').first().waitFor();
   await page.waitForTimeout(600);
-  await page.evaluate(() => {
-    const raw = JSON.parse(localStorage.getItem('messages.app.state') as string);
-    raw.state.settings.showDetails = true;
-    raw.savedAt = Date.now();
-    localStorage.setItem('messages.app.state', JSON.stringify(raw));
+  await page.evaluate(async () => {
+    const env = (await window.__store.read())!;
+    env.state.settings.showDetails = true;
+    await window.__store.write(env);
   });
   await page.reload();
 
@@ -128,10 +121,11 @@ test('I can build my own character, wear it, edit it and delete it', async ({ pa
   await expect(page.locator('.memoji-tile.selected')).toHaveAttribute('aria-label', 'Riya');
 
   // it survives a reload
-  await page.waitForFunction(() => {
-    const raw = localStorage.getItem('messages.app.state');
-    return !!raw && (JSON.parse(raw).state.customMemoji ?? []).length === 1;
-  });
+  await expect
+    .poll(async () =>
+      page.evaluate(async () => ((await window.__store.read())?.state.customMemoji ?? []).length),
+    )
+    .toBe(1);
   await page.reload();
   await expect(hero.locator('svg')).toHaveCount(1);
 

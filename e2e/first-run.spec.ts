@@ -12,10 +12,7 @@ test('a fresh install has no conversations and no messages', async ({ page }) =>
   await expect(page.locator('.pinned-item')).toHaveCount(0);
   await expect(page.locator('.bubble')).toHaveCount(0);
   await expect(page.getByText('No Conversations')).toBeVisible();
-  const stored = await page.evaluate(() => {
-    const raw = localStorage.getItem('messages.app.state');
-    return raw ? JSON.parse(raw).state : null;
-  });
+  const stored = await page.evaluate(async () => (await window.__store.read())?.state ?? null);
   expect(stored?.chats ?? []).toEqual([]);
   expect(stored?.messages ?? []).toEqual([]);
 });

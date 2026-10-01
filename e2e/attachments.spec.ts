@@ -78,20 +78,32 @@ test('a big photo is downscaled before it is stored', async ({ page }) => {
   await page.locator('.field textarea').fill('big photo');
   await page.keyboard.press('Enter');
 
-  // persistence is debounced; wait for the message to actually hit storage
-  await page.waitForFunction(() => {
-    const raw = localStorage.getItem('messages.app.state');
-    if (!raw) return false;
-    const msgs = JSON.parse(raw).state.messages as Array<{ attachments: Array<{ kind: string; src?: string }> }>;
-    return msgs.some((m) => m.attachments.some((a) => a.kind === 'image' && a.src?.startsWith('data:')));
-  });
+  // persistence is debounced and the database write is async, so poll the
+  // store itself — `waitForFunction` cannot await an async predicate
+  await expect
+    .poll(async () =>
+      page.evaluate(async () => {
+        const env = await window.__store.read();
+        const msgs = (env?.state.messages ?? []) as Array<{ attachments: Array<{ kind: string; src?: string }> }>;
+        return msgs.some((m) => m.attachments.some((a) => a.kind === 'image' && a.src?.startsWith('data:')));
+      }),
+    )
+    .toBe(true);
 
   const dims = await page.evaluate(async () => {
-    const raw = localStorage.getItem('messages.app.state');
-    const env = JSON.parse(raw as string);
+    const env = (await window.__store.read())!;
     const msgs = env.state.messages as Array<{ attachments: Array<{ kind: string; src?: string; width?: number; height?: number }> }>;
     const att = msgs.flatMap((m) => m.attachments).filter((a) => a.kind === 'image' && a.src?.startsWith('data:')).pop();
-    if (!att) return null;
+    if (!att) {
+      const dbg = await (async () => {
+        const open = () => new Promise<IDBDatabase>((res, rej) => { const r = indexedDB.open('messages', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+        const db = await open();
+        const idb = await new Promise<any>((res) => { const tx = db.transaction('app', 'readonly'); const r = tx.objectStore('app').get('state'); r.onsuccess = () => res(r.result ?? null); r.onerror = () => res('ERR'); });
+        const ls = localStorage.getItem('messages.app.state');
+        return { idbAt: idb?.savedAt, idbMsgs: idb?.state?.messages?.length, lsAt: ls ? JSON.parse(ls).savedAt : null, lsMsgs: ls ? JSON.parse(ls).state.messages.length : null, envAt: env.savedAt, envMsgs: msgs.length };
+      })();
+      throw new Error('DBG ' + JSON.stringify(dbg));
+    }
     const real = await new Promise<[number, number]>((res) => {
       const i = new Image();
       i.onload = () => res([i.naturalWidth, i.naturalHeight]);
@@ -139,10 +151,14 @@ test('a draft survives switching threads and reloading', async ({ page, isMobile
   await expect(field).toHaveValue('half-written thought');
 
   // and it is still there after a reload
-  await page.waitForFunction(() => {
-    const raw = localStorage.getItem('messages.app.state');
-    return !!raw && JSON.parse(raw).state.chats.some((c: { draft: string }) => c.draft === 'half-written thought');
-  });
+  await expect
+    .poll(async () =>
+      page.evaluate(async () => {
+        const env = await window.__store.read();
+        return !!env && env.state.chats.some((c: { draft: string }) => c.draft === 'half-written thought');
+      }),
+    )
+    .toBe(true);
   await page.reload();
   await expect(page.locator('.field textarea')).toHaveValue('half-written thought');
 });

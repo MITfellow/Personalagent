@@ -1,8 +1,11 @@
 import type { Store } from '../types';
 import { buildSeedStore } from '../data/seed';
+import { idbDelete, idbGet, idbPut, idbSupported } from './db';
 
 export const STORAGE_KEY = 'messages.app.state';
 export const SCHEMA_VERSION = 3;
+/** key inside the IndexedDB object store */
+export const STATE_KEY = 'state';
 
 interface Envelope {
   version: number;
@@ -22,6 +25,7 @@ export const lastWrittenStamp = () => lastWriteAt;
  * snapshot over somebody else's newer one.
  */
 export function storageChangedElsewhere(): boolean {
+  if (idbSupported()) return false;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return lastWriteAt !== 0;
@@ -80,16 +84,60 @@ function migrate(raw: any): Store | null {
   return merged;
 }
 
-export function loadState(): Store {
+/** Read and validate whatever is in localStorage, with its stamp. */
+function readLocal(): { state: Store; savedAt: number } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('imessage-clone-v2');
-    if (!raw) return buildSeedStore();
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const migrated = migrate(parsed);
-    return migrated ?? buildSeedStore();
+    const state = migrate(parsed);
+    if (!state) return null;
+    return { state, savedAt: typeof parsed?.savedAt === 'number' ? parsed.savedAt : 0 };
   } catch {
-    return buildSeedStore();
+    return null;
   }
+}
+
+/**
+ * Load the store.
+ *
+ * IndexedDB is the home of record, but localStorage is still read because
+ * (a) accounts created before the move live there and must be migrated, and
+ * (b) it is the fallback when IndexedDB is unavailable. Whichever copy carries
+ * the newer `savedAt` wins, so a tab that wrote to localStorage while this one
+ * was closed is not silently discarded.
+ */
+export async function loadState(): Promise<Store> {
+  const local = readLocal();
+  let idb: Envelope | undefined;
+  try {
+    idb = await idbGet<Envelope>(STATE_KEY);
+  } catch {
+    idb = undefined;
+  }
+
+  const idbState = idb?.state ? migrate(idb) : null;
+  const idbAt = typeof idb?.savedAt === 'number' ? idb.savedAt : -1;
+  const localAt = local?.savedAt ?? -1;
+
+  if (idbState && idbAt >= localAt) {
+    lastWriteAt = idbAt;
+    return idbState;
+  }
+
+  if (local) {
+    lastWriteAt = local.savedAt;
+    // carry the older account over so the next write lands in IndexedDB
+    void saveState(local.state).catch(() => {});
+    return local.state;
+  }
+
+  return idbState ?? buildSeedStore();
+}
+
+/** Synchronous best-effort read, for code that cannot await (error paths). */
+export function loadStateSync(): Store {
+  return readLocal()?.state ?? buildSeedStore();
 }
 
 /** Strips the heaviest payloads (pasted image data URIs) oldest-first. */
@@ -109,9 +157,58 @@ function shrink(state: Store): Store {
   return { ...state, messages };
 }
 
-export function saveState(state: Store): SaveResult {
+/**
+ * Persist the store. IndexedDB takes a structured clone — no JSON pass, no
+ * 5MB ceiling, no deleting the user's photos to make room. localStorage is
+ * only used when IndexedDB is unavailable, and keeps the old quota-shrink
+ * behaviour because there it really can run out of space.
+ */
+/**
+ * Writes are serialised. Two saves in flight at once can otherwise complete out
+ * of order and leave the older snapshot on disk — the migration write kicked
+ * off by `loadState` used to land on top of messages sent moments later. A
+ * save that is already superseded by a newer one is dropped rather than
+ * written, which also coalesces bursts.
+ */
+let writeSeq = 0;
+let writeChain: Promise<unknown> = Promise.resolve();
+
+export function saveState(state: Store): Promise<SaveResult> {
+  const seq = ++writeSeq;
+  const run = writeChain.then(() =>
+    seq === writeSeq ? writeNow(state) : ({ ok: true } as SaveResult),
+  );
+  // the chain must never reject, or every later save would be skipped
+  writeChain = run.catch(() => undefined);
+  return run;
+}
+
+async function writeNow(state: Store): Promise<SaveResult> {
+  const savedAt = Date.now();
+  const envelope: Envelope = { version: SCHEMA_VERSION, savedAt, state };
+
+  if (idbSupported()) {
+    try {
+      await idbPut(STATE_KEY, envelope);
+      lastWriteAt = savedAt;
+      // the legacy copy would otherwise shadow IndexedDB on the next load
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      return { ok: true };
+    } catch {
+      /* fall through to localStorage */
+    }
+  }
+
+  return saveToLocal(state, savedAt);
+}
+
+/** The pre-IndexedDB path, still used as a fallback and by the sync flush. */
+export function saveToLocal(state: Store, savedAt = Date.now()): SaveResult {
   const write = (s: Store) => {
-    const savedAt = Date.now();
     const envelope: Envelope = { version: SCHEMA_VERSION, savedAt, state: s };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
     lastWriteAt = savedAt;
@@ -132,7 +229,7 @@ export function saveState(state: Store): SaveResult {
   }
 }
 
-export function clearState() {
+export async function clearState() {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('imessage-clone-v2');
@@ -140,6 +237,12 @@ export function clearState() {
   } catch {
     /* ignore */
   }
+  try {
+    await idbDelete(STATE_KEY);
+  } catch {
+    /* ignore */
+  }
+  lastWriteAt = 0;
 }
 
 export function exportState(state: Store) {

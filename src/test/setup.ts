@@ -1,4 +1,7 @@
 import '@testing-library/jest-dom/vitest';
+// jsdom has no IndexedDB; the persistence layer is exercised against a real
+// implementation rather than a hand-rolled mock
+import 'fake-indexeddb/auto';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
@@ -35,4 +38,15 @@ if (!Element.prototype.scrollTo) {
 }
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
+}
+
+/** jsdom has no BroadcastChannel; cross-tab sync is covered in E2E. */
+if (!('BroadcastChannel' in window)) {
+  (window as unknown as { BroadcastChannel: unknown }).BroadcastChannel = class {
+    onmessage: ((e: MessageEvent) => void) | null = null;
+    postMessage() {}
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+  };
 }

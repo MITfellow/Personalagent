@@ -10,7 +10,7 @@ import { NewMessageModal, SettingsModal, ShortcutsModal } from './components/Mod
 import { applyUpdate } from './lib/sw';
 
 function Shell() {
-  const { state, dispatch, activeChat, effect, fireEffect, messagesFor, online, storageIssue, dismissStorageIssue } =
+  const { state, dispatch, activeChat, booted, effect, fireEffect, messagesFor, online, storageIssue, dismissStorageIssue } =
     useStore();
   // the PWA "New Message" shortcut lands on /?compose=1
   const [modal, setModal] = useState<null | 'new' | 'settings' | 'shortcuts'>(() =>
@@ -51,7 +51,14 @@ function Shell() {
   // paint); losing the active chat — reset, or deleting the last one — must
   // slide back to the list instead of stranding the user on an empty pane
   const [lastChatId, setLastChatId] = useState(state.activeChatId);
-  if (lastChatId !== state.activeChatId) {
+  const [slideReady, setSlideReady] = useState(booted);
+  if (!slideReady && booted) {
+    // the store arrives from the database after the first render, so the
+    // conversation it restores must be adopted silently — otherwise booting
+    // looks like a tap and the phone slides straight into the thread
+    setSlideReady(true);
+    setLastChatId(state.activeChatId);
+  } else if (lastChatId !== state.activeChatId) {
     setLastChatId(state.activeChatId);
     if (window.innerWidth <= 720) setMobileList(!state.activeChatId);
   }
@@ -104,6 +111,20 @@ function Shell() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [dispatch, state.chats, state.activeChatId, messagesFor, toggleDetails]);
+
+  // reading the database takes a few milliseconds; showing the window in its
+  // empty state first would flash "No Conversations" at someone who has
+  // hundreds of them
+  if (!booted) {
+    return (
+      <div className="desktop">
+        <div className="boot" role="status" aria-live="polite">
+          <span className="boot-spinner" aria-hidden="true" />
+          <span className="boot-label">Loading your messages…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="desktop">

@@ -36,6 +36,8 @@ export interface Ctx {
   startChatWith: (contactIds: string[]) => string;
   reset: () => void;
   resolvedTheme: 'light' | 'dark';
+  /** false until the store has been read from IndexedDB */
+  booted: boolean;
   online: boolean;
   storageIssue: string | null;
   dismissStorageIssue: () => void;

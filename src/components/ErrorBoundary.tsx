@@ -43,8 +43,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <button
               className="btn"
               onClick={() => {
-                clearState();
-                window.location.reload();
+                // the reload must wait for the database clear, or it races it
+                void clearState().finally(() => window.location.reload());
               }}
             >
               Reset all data

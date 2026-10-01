@@ -8,9 +8,8 @@ async function addPhotos(page: import('@playwright/test').Page) {
   // mobile opens on the list pane, so wait for whichever pane is showing
   await page.locator('.bubble, .conv-row, .pinned-item').first().waitFor();
   await page.waitForTimeout(600);
-  await page.evaluate(() => {
-    const raw = localStorage.getItem('messages.app.state');
-    const env = JSON.parse(raw as string);
+  await page.evaluate(async () => {
+    const env = (await window.__store.read())!;
     const s = env.state;
     const chatId = s.chats[0].id;
     s.activeChatId = chatId;
@@ -31,8 +30,7 @@ async function addPhotos(page: import('@playwright/test').Page) {
         screenEffect: 'none',
       });
     }
-    env.savedAt = Date.now();
-    localStorage.setItem('messages.app.state', JSON.stringify(env));
+    await window.__store.write(env);
   });
   await page.reload();
 }
