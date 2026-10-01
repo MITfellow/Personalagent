@@ -27,20 +27,21 @@ test('staged files show a real preview, type and size before sending', async ({ 
   await expect(page.locator('.stage-head')).toContainText('2 attachments');
 });
 
-test('oversized and empty files are refused with a reason, not silently dropped', async ({ page }) => {
+test('an empty file is refused with a reason, a 9 MB one is not', async ({ page }) => {
   await page.locator('input[type=file]').setInputFiles([WIDE, BIG, EMPTY]);
 
   await expect(page.locator('.stage-tile')).toHaveCount(3);
-  await expect(page.locator('.stage-tile.error')).toHaveCount(2);
-  await expect(page.locator('.stage-size.bad').nth(0)).toContainText(/too large/i);
-  await expect(page.locator('.stage-size.bad').nth(1)).toContainText(/empty/i);
+  // the per-file ceiling is 100 MB now that files live in IndexedDB, so the
+  // 9 MB binary is perfectly acceptable; only the empty one is rejected
+  await expect(page.locator('.stage-tile.error')).toHaveCount(1);
+  await expect(page.locator('.stage-size.bad').nth(0)).toContainText(/empty/i);
 
-  // only the good one counts towards the total, and only it is sent
-  await expect(page.locator('.stage-head')).toContainText('1 attachment');
+  await expect(page.locator('.stage-head')).toContainText('2 attachments');
   await page.locator('.field textarea').fill('one good file');
   await page.keyboard.press('Enter');
   await expect(page.locator('.stage-tile')).toHaveCount(0);
   await expect(page.locator('.bubble.out .att-image').last()).toBeVisible();
+  await expect(page.locator('.bubble.out .att-file').last()).toContainText('oversize.bin');
 });
 
 test('the same file twice is de-duped with a notice', async ({ page }) => {

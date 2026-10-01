@@ -1,6 +1,7 @@
 import type { Store } from '../types';
 import { buildSeedStore } from '../data/seed';
 import { idbDelete, idbGet, idbPut, idbSupported } from './db';
+import { inlineBlobs, restoreBlobs } from './blobs';
 
 export const STORAGE_KEY = 'messages.app.state';
 export const SCHEMA_VERSION = 3;
@@ -206,8 +207,32 @@ async function writeNow(state: Store): Promise<SaveResult> {
   return saveToLocal(state, savedAt);
 }
 
+/**
+ * `JSON.stringify` turns a Blob into `{}` without complaining, so a file would
+ * come back from the localStorage fallback as a name with nothing behind it.
+ * The bytes stay in IndexedDB; here the attachment is marked unavailable so
+ * the UI can say so instead of offering a download that produces nothing.
+ */
+function withoutBlobs(state: Store): Store {
+  if (!state.messages.some((m) => m.attachments.some((a) => a.blob))) return state;
+  return {
+    ...state,
+    messages: state.messages.map((m) =>
+      m.attachments.some((a) => a.blob)
+        ? {
+            ...m,
+            attachments: m.attachments.map((a) =>
+              a.blob ? { ...a, blob: undefined, unavailable: true } : a,
+            ),
+          }
+        : m,
+    ),
+  };
+}
+
 /** The pre-IndexedDB path, still used as a fallback and by the sync flush. */
-export function saveToLocal(state: Store, savedAt = Date.now()): SaveResult {
+export function saveToLocal(original: Store, savedAt = Date.now()): SaveResult {
+  const state = withoutBlobs(original);
   const write = (s: Store) => {
     const envelope: Envelope = { version: SCHEMA_VERSION, savedAt, state: s };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
@@ -245,8 +270,10 @@ export async function clearState() {
   lastWriteAt = 0;
 }
 
-export function exportState(state: Store) {
-  const blob = new Blob([JSON.stringify({ version: SCHEMA_VERSION, state }, null, 2)], {
+export async function exportState(state: Store) {
+  // a backup has to carry the actual files, and JSON cannot hold a Blob
+  const portable = await inlineBlobs(state);
+  const blob = new Blob([JSON.stringify({ version: SCHEMA_VERSION, state: portable }, null, 2)], {
     type: 'application/json',
   });
   const url = URL.createObjectURL(blob);
@@ -262,5 +289,6 @@ export async function importState(file: File): Promise<Store> {
   const parsed = JSON.parse(text);
   const migrated = migrate(parsed);
   if (!migrated) throw new Error('That file is not a Messages backup.');
-  return migrated;
+  // data URLs in the backup become real bytes again
+  return restoreBlobs(migrated);
 }

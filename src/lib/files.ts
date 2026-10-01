@@ -1,14 +1,22 @@
 /**
  * Attachment plumbing: naming, sizing, type sniffing and image downscaling.
  *
- * Everything the app stores lives in localStorage, so a handful of phone
- * photos at full resolution would blow the quota on the first send. Images are
- * re-encoded to a sane edge length before they ever reach the store.
+ * Any file can be attached. The bytes are kept as a Blob and handed to
+ * IndexedDB as a structured clone — no base64, so a 40 MB video costs 40 MB
+ * rather than the 53 MB a data URL would. Images additionally get a
+ * downscaled preview so a thread of phone photos stays cheap to render.
  */
 
 /** hard caps, surfaced in the UI rather than failing silently */
-export const MAX_FILES = 10;
-export const MAX_BYTES = 8 * 1024 * 1024;
+export const MAX_FILES = 20;
+/**
+ * Per-file ceiling. This was 8 MB when everything lived in localStorage;
+ * IndexedDB stores binary natively, so the limit is now about what is
+ * reasonable to hold in a conversation rather than what the browser allows.
+ */
+export const MAX_BYTES = 100 * 1024 * 1024;
+/** total across one message, so a single send cannot eat the whole quota */
+export const MAX_TOTAL_BYTES = 250 * 1024 * 1024;
 export const MAX_EDGE = 1600;
 export const JPEG_QUALITY = 0.82;
 
@@ -40,6 +48,65 @@ export function shortName(name: string, max = 22): string {
   return `${stem.slice(0, head)}…${stem.slice(-tail)}${ext ? `.${ext}` : ''}`;
 }
 
+/** Broad buckets that decide how an attachment is rendered. */
+export type FileClass = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'archive' | 'file';
+
+const BY_EXT: Record<string, FileClass> = {
+  // images
+  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', avif: 'image',
+  bmp: 'image', ico: 'image', svg: 'image', heic: 'image', heif: 'image', tif: 'image', tiff: 'image',
+  // video
+  mp4: 'video', m4v: 'video', mov: 'video', webm: 'video', ogv: 'video', avi: 'video',
+  mkv: 'video', mpg: 'video', mpeg: 'video', '3gp': 'video',
+  // audio
+  mp3: 'audio', wav: 'audio', m4a: 'audio', aac: 'audio', ogg: 'audio', oga: 'audio',
+  opus: 'audio', flac: 'audio', aiff: 'audio', wma: 'audio', mid: 'audio',
+  // documents that open as a page
+  pdf: 'pdf',
+  // text and code
+  txt: 'text', md: 'text', markdown: 'text', rtf: 'text', log: 'text', csv: 'text', tsv: 'text',
+  json: 'text', xml: 'text', yml: 'text', yaml: 'text', toml: 'text', ini: 'text', env: 'text',
+  js: 'text', jsx: 'text', ts: 'text', tsx: 'text', mjs: 'text', cjs: 'text',
+  html: 'text', htm: 'text', css: 'text', scss: 'text', less: 'text',
+  py: 'text', rb: 'text', go: 'text', rs: 'text', java: 'text', kt: 'text', swift: 'text',
+  c: 'text', h: 'text', cpp: 'text', hpp: 'text', cs: 'text', php: 'text', sh: 'text',
+  sql: 'text', diff: 'text', patch: 'text',
+  // archives
+  zip: 'archive', rar: 'archive', '7z': 'archive', gz: 'archive', tgz: 'archive', bz2: 'archive',
+  xz: 'archive', tar: 'archive', dmg: 'archive', iso: 'archive', pkg: 'archive', apk: 'archive',
+};
+
+/**
+ * What kind of thing this is. The MIME type is trusted first — it comes from
+ * the OS — and the extension is the fallback, because plenty of files arrive
+ * with an empty type (drag from an archive, some Linux file managers).
+ */
+export function classify(type: string, name = ''): FileClass {
+  const t = (type || '').toLowerCase();
+  if (t.startsWith('image/')) return 'image';
+  if (t.startsWith('video/')) return 'video';
+  if (t.startsWith('audio/')) return 'audio';
+  if (t === 'application/pdf') return 'pdf';
+  if (t.startsWith('text/')) return 'text';
+  if (/^application\/(json|xml|javascript|x-sh|sql|x-yaml)/.test(t)) return 'text';
+  if (/(zip|compressed|tar|rar|7z|gzip)/.test(t)) return 'archive';
+  return BY_EXT[extOf(name)] ?? 'file';
+}
+
+/** Human type name for the file card: "PDF Document", "ZIP Archive". */
+export function describeType(type: string, name = ''): string {
+  const ext = extOf(name).toUpperCase();
+  switch (classify(type, name)) {
+    case 'image': return ext ? `${ext} Image` : 'Image';
+    case 'video': return ext ? `${ext} Video` : 'Video';
+    case 'audio': return ext ? `${ext} Audio` : 'Audio';
+    case 'pdf': return 'PDF Document';
+    case 'archive': return ext ? `${ext} Archive` : 'Archive';
+    case 'text': return ext ? `${ext} File` : 'Text File';
+    default: return ext ? `${ext} File` : 'File';
+  }
+}
+
 const TINTS: Record<string, string> = {
   pdf: '#FF453A',
   doc: '#2F7FD6',
@@ -65,6 +132,31 @@ const TINTS: Record<string, string> = {
   json: '#FFD60A',
   js: '#FFD60A',
   ts: '#2F7FD6',
+  tsx: '#2F7FD6',
+  py: '#3776AB',
+  rb: '#CC342D',
+  go: '#00ADD8',
+  rs: '#DEA584',
+  java: '#E76F00',
+  swift: '#F05138',
+  html: '#E34F26',
+  css: '#264DE4',
+  sh: '#4EAA25',
+  sql: '#DD7F00',
+  svg: '#FFB13B',
+  heic: '#5AC8FA',
+  webm: '#BF5AF2',
+  mkv: '#BF5AF2',
+  avi: '#BF5AF2',
+  flac: '#FF375F',
+  aac: '#FF375F',
+  ogg: '#FF375F',
+  '7z': '#8E8E93',
+  tar: '#8E8E93',
+  dmg: '#8E8E93',
+  iso: '#8E8E93',
+  apk: '#A4C639',
+  epub: '#8E44AD',
 };
 
 /** the colour of the little type badge */
@@ -85,6 +177,17 @@ export const isImageFile = (type: string, name = '') =>
 export function rejectReason(file: { size: number; name: string }): string | null {
   if (file.size === 0) return 'This file is empty';
   if (file.size > MAX_BYTES) return `Too large — ${humanSize(file.size)}, limit is ${humanSize(MAX_BYTES)}`;
+  return null;
+}
+
+/**
+ * Whether one send is too heavy in total. A hundred 90 MB files are each
+ * individually fine and collectively absurd.
+ */
+export function totalReason(bytes: number): string | null {
+  if (bytes > MAX_TOTAL_BYTES) {
+    return `That's ${humanSize(bytes)} in one message — the limit is ${humanSize(MAX_TOTAL_BYTES)}`;
+  }
   return null;
 }
 

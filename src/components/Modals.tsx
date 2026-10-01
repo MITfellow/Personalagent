@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/context';
+import StoragePanel from './StoragePanel';
 import { Avatar } from './Avatar';
 import { MemojiPicker } from './MemojiPicker';
 import { Memoji } from './Memoji';
@@ -273,11 +274,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             />
           </Row>
 
+          <StoragePanel onNotice={setNotice} />
+
           <div className="panel-label" style={{ marginTop: 6 }}>
             Data
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" style={{ flex: 1 }} onClick={exportData}>
+            <button className="btn" style={{ flex: 1 }} onClick={() => void exportData()}>
               Export backup
             </button>
             <button className="btn" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>

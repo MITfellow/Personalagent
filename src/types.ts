@@ -44,9 +44,21 @@ export type DeliveryStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed
 
 export interface Attachment {
   id: string;
-  kind: 'image' | 'audio' | 'link' | 'location' | 'file' | 'sticker';
+  kind: 'image' | 'video' | 'audio' | 'link' | 'location' | 'file' | 'sticker';
   /** data-uri, remote url, or generated gradient descriptor */
   src?: string;
+  /**
+   * The real bytes. Stored in IndexedDB as a structured clone, so files keep
+   * their original size instead of growing a third under base64. Rendering
+   * goes through an object URL (see lib/blobs.ts).
+   */
+  blob?: Blob;
+  /** MIME type as reported by the OS */
+  type?: string;
+  /** byte count, kept numeric for sorting and quota maths (`size` is the label) */
+  bytes?: number;
+  /** the metadata survived but the bytes did not (localStorage fallback) */
+  unavailable?: boolean;
   name?: string;
   size?: string;
   width?: number;

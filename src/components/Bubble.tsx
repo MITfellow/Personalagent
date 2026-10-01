@@ -6,7 +6,20 @@ import { mmss, timeOfDay } from '../lib/time';
 import { Avatar } from './Avatar';
 import { Floating } from './Floating';
 import MapCard from './MapCard';
-import { IconCopy, IconMore, IconPause, IconPlay, IconReply, IconSmiley, IconTrash, IconX } from './Icons';
+import { downloadAttachment, openAttachment, useAttachmentUrl } from '../lib/blobs';
+import { classify, describeType, fileTint, shortName, typeLabel } from '../lib/files';
+import {
+  IconCopy,
+  IconDownload,
+  IconMore,
+  IconOpen,
+  IconPause,
+  IconPlay,
+  IconReply,
+  IconSmiley,
+  IconTrash,
+  IconX,
+} from './Icons';
 
 const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\uFE0F|\u200D|\s){1,9}$/u;
 
@@ -83,7 +96,8 @@ function InkOverlay({ active }: { active: boolean }) {
  * fallback rather than showing a play button that does nothing.
  */
 function AudioAtt({ att, out }: { att: Attachment; out: boolean }) {
-  const real = !!att.src;
+  const url = useAttachmentUrl(att);
+  const real = !!url;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [t, setT] = useState(0);
@@ -161,7 +175,7 @@ function AudioAtt({ att, out }: { att: Attachment; out: boolean }) {
 
   return (
     <div className={`att-audio ${out ? 'out' : 'in'}`}>
-      {real && <audio ref={audioRef} src={att.src} preload="metadata" />}
+      {real && <audio ref={audioRef} src={url} preload="metadata" />}
       <button
         onClick={toggle}
         aria-label={playing ? 'Pause' : 'Play'}
@@ -225,17 +239,81 @@ function AttachmentView({
         </div>
       </a>
     );
-  if (att.kind === 'file')
-    return (
-      <div className="att-file">
-        <div className="ft">{(att.name ?? 'FILE').split('.').pop()?.toUpperCase().slice(0, 4)}</div>
-        <div>
-          <div className="fname">{att.name}</div>
-          <div className="fsize">{att.size}</div>
+  if (att.kind === 'video') return <VideoAtt att={att} />;
+  if (att.kind === 'file') return <FileAtt att={att} />;
+  return null;
+}
+
+/* ───────────────────────── video attachment ───────────────────────── */
+function VideoAtt({ att }: { att: Attachment }) {
+  const url = useAttachmentUrl(att);
+  return (
+    <div className="att-video">
+      {/* preload="metadata" so the poster frame and duration appear without
+          pulling the whole file into memory on thread open */}
+      <video src={url} controls preload="metadata" playsInline />
+      <div className="att-video-bar">
+        <span className="fname">{shortName(att.name ?? 'Video', 26)}</span>
+        <span className="fsize">{att.size}</span>
+        <button
+          className="att-act"
+          onClick={() => downloadAttachment(att)}
+          aria-label={`Download ${att.name ?? 'video'}`}
+          title="Download"
+        >
+          <IconDownload size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── any other file ───────────────────────── */
+function FileAtt({ att }: { att: Attachment }) {
+  const cls = classify(att.type ?? '', att.name ?? '');
+  const has = !!att.blob || !!att.src;
+  // PDFs, text and code are things a browser can actually show
+  const viewable = has && (cls === 'pdf' || cls === 'text' || cls === 'image');
+
+  return (
+    <div className="att-file">
+      <div className="ft" style={{ background: fileTint(att.name ?? '') }}>
+        {typeLabel(att.name ?? '')}
+      </div>
+      <div className="fmeta">
+        <div className="fname" title={att.name}>
+          {shortName(att.name ?? 'File', 28)}
+        </div>
+        <div className="fsize">
+          {describeType(att.type ?? '', att.name ?? '')}
+          {att.size ? ` · ${att.size}` : ''}
         </div>
       </div>
-    );
-  return null;
+      <div className="facts">
+        {att.unavailable && <span className="att-unavailable">Unavailable</span>}
+        {viewable && (
+          <button
+            className="att-act"
+            onClick={() => openAttachment(att)}
+            aria-label={`Open ${att.name ?? 'file'}`}
+            title="Open"
+          >
+            <IconOpen size={13} />
+          </button>
+        )}
+        {has && (
+          <button
+            className="att-act"
+            onClick={() => downloadAttachment(att)}
+            aria-label={`Download ${att.name ?? 'file'}`}
+            title="Download"
+          >
+            <IconDownload size={13} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ───────────────────────── bubble ───────────────────────── */

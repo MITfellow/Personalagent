@@ -244,3 +244,29 @@ export const IconWaveform = ({ size = 16 }: P) => (
     <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
   </svg>
 );
+
+/** Save an attachment to disk. */
+export const IconDownload = ({ size = 15 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3v12" />
+    <path d="m7 11 5 5 5-5" />
+    <path d="M4 19h16" />
+  </svg>
+);
+
+/** Open in a new tab. */
+export const IconOpen = ({ size = 14 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 4h6v6" />
+    <path d="M20 4 11 13" />
+    <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+  </svg>
+);
+
+/** A page with a folded corner — the generic document glyph. */
+export const IconDoc = ({ size = 18 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={1.8} strokeLinejoin="round">
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+    <path d="M14 3v5h5" />
+  </svg>
+);

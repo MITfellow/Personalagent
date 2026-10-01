@@ -179,7 +179,10 @@ src/
   lib/bot.ts            persona reply engine
   lib/time.ts           timestamp + grouping rules
   lib/sound.ts          WebAudio sound kit
-  lib/persist.ts        versioned localStorage: migration, quota pruning, export/import
+  lib/persist.ts        versioned envelope: migration, quota pruning, export/import
+  lib/db.ts             promise wrapper over IndexedDB
+  lib/blobs.ts          object URLs, download/open, blob <-> data URL for backups
+  lib/install.ts        install prompt, storage estimate + persistence, launch files
   lib/notify.ts         Notification API wrapper (background tabs only)
   lib/sw.ts             service-worker registration + "update ready" handshake
   lib/reducer.ts        pure state machine (unit-tested in isolation)
@@ -308,6 +311,68 @@ Covered by unit tests against a real IndexedDB (`fake-indexeddb`) and by
 `e2e/storage.spec.ts`, which seeds an 8 MB account, reloads, proves every photo
 survived, and asserts the same payload is still refused by `localStorage`.
 
+## Any file, and a real install
+
+Attachments used to mean photos. The picker was `accept="image/*"`, anything
+else was turned away, and even an accepted file was kept only as a downscaled
+data URL — the original bytes were thrown out. Now the composer takes
+**anything**, keeps the bytes, and can give them back.
+
+**The bytes are real.** Every file is held as a `Blob` on the attachment and
+written straight into IndexedDB, which stores it as a structured clone — binary,
+not base64. A 40 MB video costs 40 MB instead of the ~53 MB a data URL would,
+and nothing has to be stringified on the way in or out. Images additionally keep
+the downscaled preview as their `src`, because that is what the bubble paints.
+
+Blobs cannot go on an `<img src>`, so rendering goes through object URLs, which
+are a manual-memory API: each `createObjectURL` pins its blob until revoked.
+`useAttachmentUrl` creates the URL in a `useMemo` (so the first paint already has
+a src and nothing flashes empty) and revokes it on unmount.
+
+**Limits moved with the storage.** Under `localStorage` the ceiling was 10 files
+of 8 MB; it is now **20 files, 100 MB each, 250 MB per message** — and the total
+is checked across the whole staged set, not file by file, so twenty 90 MB videos
+are refused before they are read rather than after.
+
+**Each type looks like itself.** `classify()` reads the MIME type first and falls
+back to the extension (dragging out of an archive often yields an empty type),
+sorting a file into image / video / audio / pdf / text / archive / file. Video
+plays inline with real controls, audio gets the waveform player, and everything
+else becomes a card with a tinted type chip, a readable label from
+`describeType()` — "PDF Document", "ZIP Archive", "TS File" — the real size, a
+**Download** button, and **Open** when it is something a browser can actually
+show.
+
+**Export survives it.** `JSON.stringify(blob)` is `{}`, quietly, so a backup
+would have lost every file. `inlineBlobs()` converts blobs to data URLs on the
+way out and `restoreBlobs()` parses them back on import; the `localStorage`
+fallback path strips blobs it cannot hold and marks those attachments
+`unavailable`, which renders as a visible label instead of a dead button.
+
+### Installing it
+
+The manifest was the minimum a browser needs to stop nagging. It now describes
+an app:
+
+- **`file_handlers`** — once installed, double-clicking a photo, video, PDF or
+  text file in Finder or Explorer opens it *in Messages*, already staged in the
+  composer. `consumeLaunchFiles()` drains the `launchQueue` and hands the files
+  to the same `addFiles` the picker uses.
+- **`share_target`** — the app appears in the OS share sheet.
+- **`launch_handler: navigate-existing`** — opening a second file focuses the
+  window you already have rather than spawning another.
+- **`screenshots`** and a description, which is what turns Chrome's bare
+  "Install?" bubble into a rich install card.
+
+Settings → Storage shows how much room the data actually takes, what the browser
+will grant, and a **Keep my data safe** button that calls
+`navigator.storage.persist()` so an eviction under disk pressure cannot quietly
+delete the conversation. Next to it is an **Install** button, which appears only
+when `beforeinstallprompt` has fired — the event is captured in `main.tsx`
+*before* React mounts, because it arrives early and only once; when it never
+comes, the panel explains the browser's manual route instead of showing a button
+that does nothing.
+
 ## Real devices
 
 The `+` menu used to be a demo: Camera inserted one of two canned JPEGs, Audio
@@ -370,7 +435,9 @@ Everything needed to actually ship this, not just demo it.
 
 | Area | What's there |
 | --- | --- |
-| **Installable PWA** | `manifest.webmanifest`, maskable + apple-touch icons, standalone display, a "New Message" app shortcut (`/?compose=1`), light/dark `theme-color` |
+| **Installable PWA** | `manifest.webmanifest`, maskable + apple-touch icons, standalone display, a "New Message" app shortcut (`/?compose=1`), light/dark `theme-color`, **screenshots + description** for a rich install card, **OS file handlers** (open a PDF or photo straight into the composer), a **share target**, `navigate-existing` launch handling, and an in-app **Install** button that appears only when the browser offers one |
+| **Any file type** | 20 files per message, 100 MB each, 250 MB in total; bytes stored as real `Blob`s in IndexedDB; inline video and audio players, type-aware file cards with Download/Open; blobs inlined as data URLs for JSON export and rebuilt on import |
+| **Storage transparency** | Settings → Storage shows usage against the browser quota and offers `navigator.storage.persist()` so the data cannot be silently evicted |
 | **Offline** | `public/sw.js` precaches the shell and every hashed asset (the list is injected at build time by a Vite plugin), then stale-while-revalidate for same-origin GETs; navigations fall back to the cached shell, so a cold reload with no network still boots the full app |
 | **Updates** | A new build is detected automatically; an "A new version is available — Reload" banner calls `SKIP_WAITING` and reloads once the new worker takes over |
 | **Failure handling** | `ErrorBoundary` replaces a crash with a recovery screen (Reload / Reset all data) instead of a white page |
@@ -379,7 +446,7 @@ Everything needed to actually ship this, not just demo it.
 | **Notifications** | Opt-in desktop notifications that only fire when the tab is hidden and the chat isn't muted |
 | **Accessibility** | Landmarks + skip link, the conversation list is a `listbox` with keyboard activation (pinned tiles and search hits live in their own labelled groups, so the listbox only ever contains options), the thread is an `aria-live` log, labelled icon buttons and tapbacks, `role="switch"` toggles, a visible focus ring everywhere, full `prefers-reduced-motion` support — and an **automated axe-core audit runs in CI** and fails on any serious or critical violation |
 | **Performance** | Messages indexed by chat in a `Map`, memoised bubbles, and long threads mount only the last 120 messages behind a "Load earlier" control; React is split into its own chunk |
-| **Tests & CI** | **51 vitest tests** — reducer, time rules, reply engine, persistence, an axe-core a11y audit, plus Testing Library integration specs that boot the whole app (send, keyboard navigation, settings, persistence, offline banner) — and **29 Playwright end-to-end specs** (`npm run e2e`) that run against the real production build on desktop **and** an emulated iPhone: boot, send + auto-reply + receipts, cross-thread search and jump, tapbacks, theme persistence across a reload, service-worker registration and a **cold offline reload**, single-pane mobile navigation, plus a **UI-regression suite** that asserts bubble tails paint behind the text, that no label is clipped by its own box, that popovers stay inside the window, that reply quotes hug their text, and that dark-mode elevated surfaces differ from the sidebar — plus a **first-run suite** covering the empty install, the contact directory, starting the very first conversation, and Reset Data. Specs that need history seed it through `e2e/fixture.ts`, so the shipped app stays empty. GitHub Actions runs typecheck → lint → test → build, then the E2E suite as its own job with the HTML report uploaded as an artifact |
+| **Tests & CI** | **126 vitest tests** — reducer, time rules, reply engine, persistence, an axe-core a11y audit, plus Testing Library integration specs that boot the whole app (send, keyboard navigation, settings, persistence, offline banner) — and **90 Playwright end-to-end specs** (`npm run e2e`) that run against the real production build on desktop **and** an emulated iPhone: boot, send + auto-reply + receipts, cross-thread search and jump, tapbacks, theme persistence across a reload, service-worker registration and a **cold offline reload**, single-pane mobile navigation, plus a **UI-regression suite** that asserts bubble tails paint behind the text, that no label is clipped by its own box, that popovers stay inside the window, that reply quotes hug their text, and that dark-mode elevated surfaces differ from the sidebar — plus a **first-run suite** covering the empty install, the contact directory, starting the very first conversation, and Reset Data. Specs that need history seed it through `e2e/fixture.ts`, so the shipped app stays empty. GitHub Actions runs typecheck → lint → test → build, then the E2E suite as its own job with the HTML report uploaded as an artifact |
 | **Deploy** | Multi-stage `Dockerfile` (node build → nginx) with `nginx.conf` (SPA fallback, immutable asset caching, no-cache `sw.js`, security headers), plus `vercel.json` and `netlify.toml` with the same rules |
 
 ```bash

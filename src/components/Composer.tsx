@@ -21,7 +21,18 @@ import {
 } from './Icons';
 import { AttachTray, type Staged } from './AttachTray';
 import { Lightbox } from './Lightbox';
-import { MAX_FILES, decodeImage, fileKey, humanSize, isImageFile, rejectReason } from '../lib/files';
+import {
+  MAX_BYTES,
+  MAX_FILES,
+  classify,
+  decodeImage,
+  describeType,
+  fileKey,
+  humanSize,
+  isImageFile,
+  rejectReason,
+  totalReason,
+} from '../lib/files';
 import CameraSheet from './CameraSheet';
 import {
   AudioRecording,
@@ -33,6 +44,7 @@ import {
   type Capture,
 } from '../lib/media';
 import { accuracyLabel } from '../lib/mapart';
+import { consumeLaunchFiles } from '../lib/install';
 
 /** A voice memo longer than this is almost certainly a forgotten tap. */
 const MAX_RECORDING_SECONDS = 180;
@@ -334,6 +346,13 @@ export function Composer({
    * photo doesn't go into localStorage at full size); everything else lands
    * immediately as a typed chip.
    */
+  /**
+   * Double-clicking a photo or PDF in Finder/Explorer launches the installed
+   * app with the file attached. The consumer is registered once; `addFilesRef`
+   * keeps it pointed at the live handler (assigned below, after `addFiles`).
+   */
+  const addFilesRef = useRef<(files: File[]) => void>(() => {});
+
   const addFiles = (files: FileList | File[] | null) => {
     if (!files) return;
     const incoming = Array.from(files);
@@ -377,7 +396,11 @@ export function Composer({
           continue;
         }
 
-        if (isImageFile(file.type, file.name)) {
+        const cls = classify(file.type, file.name);
+
+        if (cls === 'image' && isImageFile(file.type, file.name)) {
+          // images get a downscaled preview for the thread, but the original
+          // file is kept alongside it so it can be downloaded intact
           next.push({ id, name: file.name, bytes: file.size, status: 'loading' });
           void decodeImage(file)
             .then(({ src, width, height }) =>
@@ -392,6 +415,9 @@ export function Composer({
                           id,
                           kind: 'image',
                           src,
+                          blob: file,
+                          type: file.type,
+                          bytes: file.size,
                           name: file.name,
                           size: humanSize(file.size),
                           width: width || undefined,
@@ -410,20 +436,53 @@ export function Composer({
               ),
             );
         } else {
+          // everything else keeps its bytes verbatim — a PDF used to be sent
+          // as nothing but a filename
+          const kind = cls === 'video' ? 'video' : cls === 'audio' ? 'audio' : 'file';
           next.push({
             id,
             name: file.name,
             bytes: file.size,
+            detail: `${describeType(file.type, file.name)} · ${humanSize(file.size)}`,
             status: 'ready',
-            att: { id, kind: 'file', name: file.name, size: humanSize(file.size) },
+            att: {
+              id,
+              kind,
+              blob: file,
+              type: file.type || 'application/octet-stream',
+              bytes: file.size,
+              name: file.name,
+              size: humanSize(file.size),
+            },
           });
         }
       }
 
       if (skipped) notes.push(`${skipped} file${skipped > 1 ? 's' : ''} skipped — ${MAX_FILES} at a time`);
-      commit([...prev, ...next]);
+
+      // one send must not swallow the whole storage quota
+      const merged = [...prev, ...next];
+      const total = merged.reduce((n, f) => n + (f.status === 'error' ? 0 : f.bytes), 0);
+      const tooMuch = totalReason(total);
+      if (tooMuch) {
+        notes.unshift(tooMuch);
+        commit(prev);
+        return;
+      }
+
+      commit(merged);
     }
   };
+
+  // kept in sync after `addFiles` exists, so the ref never reads it mid-init
+  useEffect(() => {
+    addFilesRef.current = addFiles;
+  });
+
+  useEffect(() => {
+    consumeLaunchFiles((files) => addFilesRef.current(files));
+  }, []);
+
 
   // the notice is transient; it should never outstay the thing it describes
   useEffect(() => {
@@ -615,7 +674,6 @@ export function Composer({
         ref={fileRef}
         type="file"
         multiple
-        accept="image/*"
         hidden
         onChange={(e) => {
           addFiles(e.target.files);
@@ -788,7 +846,9 @@ export function Composer({
           <div className="drop-card">
             <IconPhotos size={22} />
             <div className="drop-title">Drop to attach</div>
-            <div className="drop-sub">Up to {MAX_FILES} files</div>
+            <div className="drop-sub">
+              Any file, up to {MAX_FILES} at a time · {humanSize(MAX_BYTES)} each
+            </div>
           </div>
         </div>
       )}

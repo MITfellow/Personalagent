@@ -425,7 +425,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .then(() => broadcast(fresh));
   }, [broadcast]);
 
-  const exportData = useCallback(() => exportState(state), [state]);
+  const exportData = useCallback(() => exportState(state), [state]);  // async: inlines file bytes
 
   const importData = useCallback(async (file: File) => {
     const store = await importState(file);

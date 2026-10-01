@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_BYTES,
+  classify,
+  describeType,
   extOf,
   fileKey,
   fileTint,
@@ -9,6 +11,7 @@ import {
   isImageFile,
   rejectReason,
   shortName,
+  totalReason,
   typeLabel,
 } from './files';
 
@@ -95,5 +98,50 @@ describe('fitWithin', () => {
 
   it('shrugs off degenerate dimensions', () => {
     expect(fitWithin(0, 0)).toEqual([0, 0]);
+  });
+});
+
+describe('classifying any file', () => {
+  it('trusts the MIME type first', () => {
+    expect(classify('image/png', 'thing.bin')).toBe('image');
+    expect(classify('video/mp4', 'clip')).toBe('video');
+    expect(classify('audio/mpeg', 'song')).toBe('audio');
+    expect(classify('application/pdf', 'report')).toBe('pdf');
+    expect(classify('text/plain', 'notes')).toBe('text');
+    expect(classify('application/zip', 'bundle')).toBe('archive');
+  });
+
+  it('falls back to the extension when the type is empty', () => {
+    // dragging out of an archive often yields an empty type
+    expect(classify('', 'holiday.HEIC')).toBe('image');
+    expect(classify('', 'render.mkv')).toBe('video');
+    expect(classify('', 'podcast.flac')).toBe('audio');
+    expect(classify('', 'contract.pdf')).toBe('pdf');
+    expect(classify('', 'main.rs')).toBe('text');
+    expect(classify('', 'backup.tar.gz')).toBe('archive');
+    expect(classify('', 'installer.dmg')).toBe('archive');
+  });
+
+  it('calls an unknown thing a file rather than guessing', () => {
+    expect(classify('', 'mystery')).toBe('file');
+    expect(classify('application/octet-stream', 'firmware.xyz')).toBe('file');
+  });
+
+  it('describes the type in words for the file card', () => {
+    expect(describeType('application/pdf', 'a.pdf')).toBe('PDF Document');
+    expect(describeType('', 'archive.zip')).toBe('ZIP Archive');
+    expect(describeType('video/quicktime', 'clip.mov')).toBe('MOV Video');
+    expect(describeType('', 'no-extension')).toBe('File');
+  });
+
+  it('refuses a file over the per-file ceiling, not an ordinary big one', () => {
+    expect(rejectReason({ name: 'clip.mp4', size: 40 * 1024 * 1024 })).toBeNull();
+    expect(rejectReason({ name: 'huge.iso', size: 200 * 1024 * 1024 })).toContain('Too large');
+    expect(rejectReason({ name: 'empty.txt', size: 0 })).toBe('This file is empty');
+  });
+
+  it('refuses a send that is too heavy in total', () => {
+    expect(totalReason(100 * 1024 * 1024)).toBeNull();
+    expect(totalReason(300 * 1024 * 1024)).toContain('in one message');
   });
 });

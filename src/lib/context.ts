@@ -41,7 +41,8 @@ export interface Ctx {
   online: boolean;
   storageIssue: string | null;
   dismissStorageIssue: () => void;
-  exportData: () => void;
+  /** writes a JSON backup; async because file bytes are inlined into it */
+  exportData: () => Promise<void>;
   importData: (file: File) => Promise<void>;
   enableNotifications: () => Promise<boolean>;
   notificationsGranted: boolean;
