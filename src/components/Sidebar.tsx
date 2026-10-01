@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/context';
-import type { Chat, Message } from '../types';
+import type { Chat, Contact, Message } from '../types';
 import { TAPBACKS } from '../types';
 import { listStamp } from '../lib/time';
 import { ChatAvatar } from './Avatar';
@@ -45,6 +45,87 @@ function previewOf(m: Message | undefined, authorName: string, youPrefix: boolea
   return youPrefix ? `You: ${body}` : authorName ? body : body;
 }
 
+/**
+ * One conversation row. Memoised on already-computed primitives: selecting a
+ * thread used to re-render all 40 rows (and their avatars) because the row was
+ * an inline function React could not skip.
+ */
+const ConvRow = React.memo(function ConvRow({
+  chat,
+  contacts,
+  title,
+  stamp,
+  preview,
+  selected,
+  onSelect,
+  onContext,
+}: {
+  chat: Chat;
+  contacts: Record<string, Contact>;
+  title: string;
+  stamp: string;
+  preview: string;
+  selected: boolean;
+  onSelect: (chatId: string) => void;
+  onContext: (chat: Chat, x: number, y: number) => void;
+}) {
+  const people = useMemo(
+    () => chat.participantIds.map((id) => contacts[id]).filter(Boolean),
+    [chat.participantIds, contacts],
+  );
+
+  return (
+    <div
+      className={`conv-row ${selected ? 'selected' : ''} ${chat.unread ? 'unread' : ''}`}
+      role="option"
+      tabIndex={0}
+      aria-selected={selected}
+      aria-label={`${title}${chat.unread ? `, ${chat.unread} unread` : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(chat.id);
+        }
+      }}
+      onClick={() => onSelect(chat.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContext(chat, e.clientX, e.clientY);
+      }}
+    >
+      {chat.unread > 0 && !selected && <span className="unread-dot" />}
+      <ChatAvatar chat={chat} contacts={people} />
+      <div className="conv-main">
+        <div className="conv-line1">
+          <span className="conv-name">{title}</span>
+          {chat.muted && (
+            <span className="conv-muted-icon">
+              <IconMuted />
+            </span>
+          )}
+          <span className="conv-time">
+            {stamp}
+            <svg
+              className="chev"
+              width="9"
+              height="9"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </span>
+        </div>
+        <div className="conv-preview">{chat.typing ? <em>typing…</em> : preview}</div>
+      </div>
+    </div>
+  );
+});
+
 export function Sidebar({
   onCompose,
   onSettings,
@@ -60,8 +141,11 @@ export function Sidebar({
   const [unreadOnly, setUnreadOnly] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // typing stays responsive while the cross-thread scan catches up
+  const deferredQuery = useDeferredValue(query);
+
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return state.chats
       .map((chat) => {
         const msgs = messagesFor(chat.id);
@@ -81,12 +165,12 @@ export function Sidebar({
         }
         return b.at - a.at;
       });
-  }, [state.chats, query, unreadOnly, messagesFor, chatTitle]);
+  }, [state.chats, deferredQuery, unreadOnly, messagesFor, chatTitle]);
 
   /** every matching message across every thread, newest first (Apple's
       "Messages" section under the conversation hits) */
   const messageHits = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     if (q.length < 2) return [];
     const out: { chat: Chat; msg: Message }[] = [];
     for (const chat of state.chats) {
@@ -96,7 +180,7 @@ export function Sidebar({
       }
     }
     return out.sort((a, b) => b.msg.at - a.msg.at).slice(0, 40);
-  }, [query, state.chats, messagesFor]);
+  }, [deferredQuery, state.chats, messagesFor]);
 
   const pinned = rows.filter((r) => r.chat.pinned);
   const normal = rows.filter((r) => !r.chat.pinned);
@@ -120,68 +204,30 @@ export function Sidebar({
     return null;
   };
 
+  const selectChat = useCallback(
+    (chatId: string) => {
+      dispatch({ type: 'select', chatId });
+      onOpen?.();
+    },
+    [dispatch, onOpen],
+  );
+
+  const openMenu = useCallback((chat: Chat, x: number, y: number) => setMenu({ x, y, chat }), []);
+
   const renderRow = ({ chat, last, hit }: (typeof rows)[number]) => {
-    const people = chatContacts(chat);
-    const selected = state.activeChatId === chat.id;
     const msg = hit ?? last;
-    const youPrefix = !!msg && msg.authorId === 'me';
-    const reaction = reactionLine(chat);
     return (
-      <div
+      <ConvRow
         key={chat.id}
-        className={`conv-row ${selected ? 'selected' : ''} ${chat.unread ? 'unread' : ''}`}
-        role="option"
-        tabIndex={0}
-        aria-selected={selected}
-        aria-label={`${chatTitle(chat)}${chat.unread ? `, ${chat.unread} unread` : ''}`}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            dispatch({ type: 'select', chatId: chat.id });
-            onOpen?.();
-          }
-        }}
-        onClick={() => {
-          dispatch({ type: 'select', chatId: chat.id });
-          onOpen?.();
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, chat });
-        }}
-      >
-        {chat.unread > 0 && !selected && <span className="unread-dot" />}
-        <ChatAvatar chat={chat} contacts={people} />
-        <div className="conv-main">
-          <div className="conv-line1">
-            <span className="conv-name">{chatTitle(chat)}</span>
-            {chat.muted && (
-              <span className="conv-muted-icon">
-                <IconMuted />
-              </span>
-            )}
-            <span className="conv-time">
-              {msg ? listStamp(msg.at) : ''}
-              <svg
-                className="chev"
-                width="9"
-                height="9"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m9 5 7 7-7 7" />
-              </svg>
-            </span>
-          </div>
-          <div className="conv-preview">
-            {chat.typing ? <em>typing…</em> : (reaction ?? previewOf(msg, '', youPrefix))}
-          </div>
-        </div>
-      </div>
+        chat={chat}
+        contacts={state.contacts}
+        title={chatTitle(chat)}
+        stamp={msg ? listStamp(msg.at) : ''}
+        preview={reactionLine(chat) ?? previewOf(msg, '', !!msg && msg.authorId === 'me')}
+        selected={state.activeChatId === chat.id}
+        onSelect={selectChat}
+        onContext={openMenu}
+      />
     );
   };
 

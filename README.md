@@ -208,6 +208,46 @@ public/
 
 ---
 
+## Performance
+
+Measured with `node scripts/bench.mjs`, which seeds 40 threads / 6,000 messages and times
+keystroke-to-paint, thread switching, search, and main-thread long tasks. Figures are from the
+**production build** (`vite preview`); the dev server runs ~2x worse because of StrictMode
+double-rendering and the JSX dev runtime.
+
+| | before | after |
+|---|---|---|
+| keystroke → paint (p50 / p95) | 127 / 291 ms | **13 / 15 ms** |
+| thread switch (avg / max) | 403 / 617 ms | **139 / 166 ms** |
+| search → results painted | 45 ms | **22 ms** |
+| long tasks > 50 ms | 37 (worst 453 ms) | **0** |
+
+At 80 threads / 14,400 messages — about as much as localStorage can hold — it is still 0 long
+tasks and a 128 ms switch.
+
+What was actually wrong:
+
+- **Every keystroke went through the global store.** One `draft` dispatch re-rendered all 40
+  sidebar rows and every bubble. Typing is now local to the composer and committed on a trailing
+  debounce (and on send, thread switch and unmount), so drafts still survive reloads.
+- **`toLocaleTimeString` builds a fresh `Intl` formatter per call** — once per bubble, per row,
+  per separator, on every render. It was 4.2% of all CPU samples. The formatters are now built
+  once and results memoised per minute behind a bounded cache.
+- **The conversation row was an inline function**, so React could never skip it. It is a
+  `React.memo` component taking already-computed primitives.
+- **Threads rendered 120 bubbles on open.** That is far more than a viewport; the first page is
+  50, with *Load Earlier* for the rest.
+- **Search ran the cross-thread scan synchronously on every keystroke.** It is behind
+  `useDeferredValue`, so the field stays responsive while results catch up.
+- **Persistence serialised 1.3 MB of JSON straight off a timer**, landing a ~100 ms task in the
+  middle of whatever you were doing. It now waits for `requestIdleCallback` (with a 2 s timeout
+  so a busy main thread can't starve it) and flushes synchronously on `pagehide`.
+
+Two correctness bugs fell out of that last change. A tab that closes now only flushes if it has
+unsaved work **and** nothing else has written since — otherwise a stale background tab stamps its
+copy over a newer one. And a `storage` listener means a second window adopts the newer state
+instead of racing it.
+
 ## Production
 
 Everything needed to actually ship this, not just demo it.

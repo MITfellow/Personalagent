@@ -18,7 +18,9 @@ export function MessageList({
 
   /* Long threads only mount their tail — "Load earlier" walks backwards a page
      at a time, which keeps a 5,000-message conversation at 60fps. */
-  const PAGE = 120;
+  // one viewport's worth plus slack; older messages arrive via Load Earlier.
+  // 120 made every thread switch render ~120 bubbles (~570ms on a big account)
+  const PAGE = 50;
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => setLimit(PAGE), [chat.id]);
   const hidden = Math.max(0, all.length - limit);

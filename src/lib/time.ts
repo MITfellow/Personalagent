@@ -1,6 +1,31 @@
 const MIN = 60_000;
 const DAY = 86_400_000;
 
+/**
+ * `toLocaleTimeString` builds a fresh Intl formatter on every call, which is
+ * one of the most expensive things you can do per render — and this runs once
+ * per bubble, per sidebar row, per separator. The formatters are built once,
+ * and results are memoised per minute (every message in the same minute shares
+ * a string) behind a bounded cache so a long-lived tab can't grow it forever.
+ */
+const fmt = {
+  time: null as Intl.DateTimeFormat | null,
+  weekday: null as Intl.DateTimeFormat | null,
+  weekdayShort: null as Intl.DateTimeFormat | null,
+  numeric: null as Intl.DateTimeFormat | null,
+  monthDay: null as Intl.DateTimeFormat | null,
+};
+
+const timeFmt = () => (fmt.time ??= new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }));
+const weekdayFmt = () => (fmt.weekday ??= new Intl.DateTimeFormat([], { weekday: 'long' }));
+const weekdayShortFmt = () =>
+  (fmt.weekdayShort ??= new Intl.DateTimeFormat([], { weekday: 'short', month: 'short', day: 'numeric' }));
+const numericFmt = () =>
+  (fmt.numeric ??= new Intl.DateTimeFormat([], { month: 'numeric', day: 'numeric', year: '2-digit' }));
+
+const CACHE_MAX = 600;
+const timeCache = new Map<number, string>();
+
 function startOfDay(t: number) {
   const d = new Date(t);
   d.setHours(0, 0, 0, 0);
@@ -12,9 +37,13 @@ export function daysApart(a: number, b: number) {
 }
 
 export function timeOfDay(t: number) {
-  return new Date(t)
-    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    .replace(/\u202f/g, ' ');
+  const key = t - (t % MIN);
+  const hit = timeCache.get(key);
+  if (hit !== undefined) return hit;
+  const out = timeFmt().format(key).replace(/\u202f/g, ' ');
+  if (timeCache.size >= CACHE_MAX) timeCache.clear();
+  timeCache.set(key, out);
+  return out;
 }
 
 /** Sidebar timestamp: 9:41 AM · Yesterday · Tuesday · 12/04/25 */
@@ -22,8 +51,8 @@ export function listStamp(t: number) {
   const d = daysApart(Date.now(), t);
   if (d === 0) return timeOfDay(t);
   if (d === 1) return 'Yesterday';
-  if (d < 7) return new Date(t).toLocaleDateString([], { weekday: 'long' });
-  return new Date(t).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' });
+  if (d < 7) return weekdayFmt().format(t);
+  return numericFmt().format(t);
 }
 
 /** In-thread separator: "Today 9:41 AM", "Yesterday 7:12 PM", "Tue, Mar 4 at 8:03 AM" */
@@ -32,12 +61,8 @@ export function separatorStamp(t: number) {
   const time = timeOfDay(t);
   if (d === 0) return { lead: 'Today', time };
   if (d === 1) return { lead: 'Yesterday', time };
-  if (d < 7) return { lead: new Date(t).toLocaleDateString([], { weekday: 'long' }), time };
-  const date = new Date(t).toLocaleDateString([], {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
+  if (d < 7) return { lead: weekdayFmt().format(t), time };
+  const date = weekdayShortFmt().format(t);
   return { lead: date, time };
 }
 

@@ -3,6 +3,11 @@ import { seedDemoWorld } from './fixture';
 
 /** Drops a second and third photo into the open thread so nav has somewhere to go. */
 async function addPhotos(page: import('@playwright/test').Page) {
+  // let the app finish booting and flush its first debounced save, otherwise
+  // that write lands on top of the fixture we are about to install
+  // mobile opens on the list pane, so wait for whichever pane is showing
+  await page.locator('.bubble, .conv-row, .pinned-item').first().waitFor();
+  await page.waitForTimeout(600);
   await page.evaluate(() => {
     const raw = localStorage.getItem('messages.app.state');
     const env = JSON.parse(raw as string);
@@ -26,6 +31,7 @@ async function addPhotos(page: import('@playwright/test').Page) {
         screenEffect: 'none',
       });
     }
+    env.savedAt = Date.now();
     localStorage.setItem('messages.app.state', JSON.stringify(env));
   });
   await page.reload();

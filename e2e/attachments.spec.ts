@@ -125,3 +125,24 @@ test('dragging files over the composer offers a drop target', async ({ page }) =
   });
   await expect(page.locator('.drop-veil')).toHaveCount(0);
 });
+
+test('a draft survives switching threads and reloading', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'needs two visible threads');
+
+  const field = page.locator('.field textarea');
+  await field.fill('half-written thought');
+
+  // switch away and back: the draft is committed on the way out
+  await page.locator('.conv-row, .pinned-item').nth(1).click();
+  await expect(field).toHaveValue('');
+  await page.locator('.conv-row, .pinned-item').nth(0).click();
+  await expect(field).toHaveValue('half-written thought');
+
+  // and it is still there after a reload
+  await page.waitForFunction(() => {
+    const raw = localStorage.getItem('messages.app.state');
+    return !!raw && JSON.parse(raw).state.chats.some((c: { draft: string }) => c.draft === 'half-written thought');
+  });
+  await page.reload();
+  await expect(page.locator('.field textarea')).toHaveValue('half-written thought');
+});

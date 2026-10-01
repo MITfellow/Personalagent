@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Attachment, BubbleEffect, Chat, Message, ScreenEffect } from '../types';
 import { BUBBLE_EFFECTS, SCREEN_EFFECTS } from '../types';
 import { useStore } from '../lib/context';
@@ -41,7 +41,17 @@ export function Composer({
   const [recording, setRecording] = useState(0);
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const draft = chat.draft;
+  /**
+   * Typing is local. Pushing every keystroke into the global store re-renders
+   * the whole window — 40 sidebar rows and every bubble — which measured ~127ms
+   * per key on a big account. The store is updated on a trailing debounce (and
+   * flushed on send, blur, and chat switch) so drafts still survive reloads.
+   */
+  const [localDraft, setLocalDraft] = useState(chat.draft);
+  const draft = localDraft;
+  const draftRef = useRef(chat.draft);
+  const flushRef = useRef<number | null>(null);
+  const chatIdRef = useRef(chat.id);
 
   const autosize = () => {
     const el = ta.current;
@@ -61,7 +71,35 @@ export function Composer({
     return () => window.clearInterval(t);
   }, [recording]);
 
-  const setDraft = (value: string) => dispatch({ type: 'draft', chatId: chat.id, value });
+  const flushDraft = useCallback(() => {
+    if (flushRef.current !== null) {
+      window.clearTimeout(flushRef.current);
+      flushRef.current = null;
+    }
+    const chatId = chatIdRef.current;
+    const value = draftRef.current;
+    dispatch({ type: 'draft', chatId, value });
+  }, [dispatch]);
+
+  const setDraft = (value: string) => {
+    setLocalDraft(value);
+    draftRef.current = value;
+    if (flushRef.current !== null) window.clearTimeout(flushRef.current);
+    flushRef.current = window.setTimeout(flushDraft, 400);
+  };
+
+  // switching threads: commit the old draft, then adopt the new one
+  useEffect(() => {
+    if (chatIdRef.current !== chat.id) {
+      flushDraft();
+      chatIdRef.current = chat.id;
+      draftRef.current = chat.draft;
+      setLocalDraft(chat.draft);
+    }
+  }, [chat.id, chat.draft, flushDraft]);
+
+  // and never lose one on unmount
+  useEffect(() => () => flushDraft(), [flushDraft]);
 
   useEffect(() => {
     stagedRef.current = staged;
@@ -80,6 +118,12 @@ export function Composer({
       bubbleEffect: bubbleFx,
       screenEffect: screenFx,
     });
+    setLocalDraft('');
+    draftRef.current = '';
+    if (flushRef.current !== null) {
+      window.clearTimeout(flushRef.current);
+      flushRef.current = null;
+    }
     setStaged([]);
     setNotice(null);
     setSubject(null);

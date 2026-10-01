@@ -1,12 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { Chat, Message, ScreenEffect, Tapback } from '../types';
+import type { Chat, Message, ScreenEffect, Store, Tapback } from '../types';
 import { reducer } from './reducer';
 import { StoreContext, type Ctx, type SendOptions } from './context';
 import { buildSeedStore } from '../data/seed';
 import { composeReply } from './bot';
 import { playReceive, playSend, playTapback, setSoundEnabled } from './sound';
 import { setCustomMemoji } from './memoji';
-import { clearState, exportState, importState, loadState, saveState } from './persist';
+import {
+  STORAGE_KEY,
+  clearState,
+  exportState,
+  importState,
+  loadState,
+  saveState,
+  storageChangedElsewhere,
+} from './persist';
 import { notify, notificationsAllowed, requestNotificationPermission } from './notify';
 
 let uid = 0;
@@ -14,6 +22,10 @@ const newId = () => `u${Date.now().toString(36)}${(uid++).toString(36)}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
+  const stateRef = useRef(state);
+  const savedRef = useRef<Store | null>(null);
+  // what we loaded is, by definition, already in storage
+  if (savedRef.current === null) savedRef.current = state;
   const [effect, setEffect] = useState<ScreenEffect>('none');
   const [systemDark, setSystemDark] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
@@ -53,10 +65,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // without every call site passing the list down
   useEffect(() => setCustomMemoji(state.customMemoji), [state.customMemoji]);
 
-  // persistence (debounced, quota-aware)
+  /**
+   * Persistence: debounced, quota-aware, and deferred to idle time.
+   *
+   * Serialising a busy account is a megabyte-plus of JSON. Doing that straight
+   * off a timer lands a ~100ms task in the middle of whatever the user is
+   * doing, so the write is handed to requestIdleCallback and only falls back
+   * to a timeout where that doesn't exist (Safari).
+   */
   useEffect(() => {
-    const t = window.setTimeout(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    let idle = 0;
+    const write = () => {
       const res = saveState(state);
+      savedRef.current = state;
       if (!res.ok) {
         setStorageIssue(
           res.reason === 'quota'
@@ -64,9 +89,64 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             : 'This browser blocked local storage, so changes will not be saved.',
         );
       }
+    };
+
+    const t = window.setTimeout(() => {
+      const ric = window.requestIdleCallback;
+      // the timeout guarantees the write still happens on a busy main thread
+      if (ric) idle = ric(write, { timeout: 2000 });
+      else write();
     }, 250);
-    return () => window.clearTimeout(t);
+
+    return () => {
+      window.clearTimeout(t);
+      if (idle && window.cancelIdleCallback) window.cancelIdleCallback(idle);
+    };
   }, [state]);
+
+  /**
+   * Another tab (or anything else writing our key) wins: adopt its state
+   * instead of racing it. Without this two open windows quietly overwrite each
+   * other's messages.
+   */
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || !e.newValue) return;
+      const next = loadState();
+      if (!next) return;
+      savedRef.current = next;
+      stateRef.current = next;
+      dispatch({ type: 'replace', store: next });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  /**
+   * A tab can be hidden or closed mid-debounce, so flush on the way out — but
+   * only when there is something unsaved. Writing unconditionally lets a stale
+   * background tab stamp its copy over a newer one from another tab.
+   */
+  useEffect(() => {
+    const flush = () => {
+      // nothing of ours is pending
+      if (savedRef.current === stateRef.current) return;
+      // somebody else (another tab) wrote after us — their copy is newer than
+      // whatever this tab is holding, so leave it alone
+      if (storageChangedElsewhere()) return;
+      saveState(stateRef.current);
+      savedRef.current = stateRef.current;
+    };
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, []);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 

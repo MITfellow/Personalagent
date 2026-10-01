@@ -15,7 +15,8 @@ async function openSettings(page: import('@playwright/test').Page, isMobile: boo
       if (!raw) return;
       const env = JSON.parse(raw);
       env.state.activeChatId = null;
-      localStorage.setItem('messages.app.state', JSON.stringify(env));
+      env.savedAt = Date.now();
+    localStorage.setItem('messages.app.state', JSON.stringify(env));
     });
     await page.reload();
   }
@@ -58,9 +59,12 @@ test('I can pick my own Memoji and it sticks across a reload', async ({ page, is
 test('a contact Memoji replaces their initials everywhere at once', async ({ page, isMobile }) => {
   test.skip(isMobile, 'the details panel is desktop-only');
   await page.goto('/');
+  await page.locator('.conv-row, .pinned-item').first().waitFor();
+  await page.waitForTimeout(600);
   await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('messages.app.state') as string);
     raw.state.settings.showDetails = true;
+    raw.savedAt = Date.now();
     localStorage.setItem('messages.app.state', JSON.stringify(raw));
   });
   await page.reload();
@@ -91,9 +95,12 @@ test('a contact Memoji replaces their initials everywhere at once', async ({ pag
 test('I can build my own character, wear it, edit it and delete it', async ({ page, isMobile }) => {
   test.skip(isMobile, 'the details panel is desktop-only');
   await page.goto('/');
+  await page.locator('.conv-row, .pinned-item').first().waitFor();
+  await page.waitForTimeout(600);
   await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('messages.app.state') as string);
     raw.state.settings.showDetails = true;
+    raw.savedAt = Date.now();
     localStorage.setItem('messages.app.state', JSON.stringify(raw));
   });
   await page.reload();

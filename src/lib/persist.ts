@@ -12,6 +12,26 @@ interface Envelope {
 
 export type SaveResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' };
 
+/** `savedAt` of the last envelope this tab wrote, for clobber detection. */
+let lastWriteAt = 0;
+export const lastWrittenStamp = () => lastWriteAt;
+
+/**
+ * True when storage carries a write this tab didn't make — another tab, or a
+ * test fixture, got there after us. Callers use it to avoid stamping a stale
+ * snapshot over somebody else's newer one.
+ */
+export function storageChangedElsewhere(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return lastWriteAt !== 0;
+    const at = JSON.parse(raw)?.savedAt;
+    return typeof at === 'number' && at !== lastWriteAt;
+  } catch {
+    return false;
+  }
+}
+
 function isQuotaError(e: unknown) {
   return (
     e instanceof DOMException &&
@@ -29,6 +49,7 @@ function migrate(raw: any): Store | null {
   // v1/v2 persisted the bare store under a different key shape
   const state: Store = raw.state ?? raw;
   if (!state || !Array.isArray(state.chats) || !state.contacts) return null;
+  if (typeof raw.savedAt === 'number') lastWriteAt = raw.savedAt;
 
   const seed = buildSeedStore();
   const merged: Store = {
@@ -90,8 +111,10 @@ function shrink(state: Store): Store {
 
 export function saveState(state: Store): SaveResult {
   const write = (s: Store) => {
-    const envelope: Envelope = { version: SCHEMA_VERSION, savedAt: Date.now(), state: s };
+    const savedAt = Date.now();
+    const envelope: Envelope = { version: SCHEMA_VERSION, savedAt, state: s };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+    lastWriteAt = savedAt;
   };
   try {
     write(state);
