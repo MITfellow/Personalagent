@@ -54,6 +54,12 @@ export interface Attachment {
   /** audio */
   duration?: number;
   waveform?: number[];
+  /** audio: the recording's container, e.g. audio/webm;codecs=opus */
+  mimeType?: string;
+  /** location: a real reading from the device */
+  lat?: number;
+  lon?: number;
+  accuracy?: number;
   /** link preview */
   title?: string;
   domain?: string;

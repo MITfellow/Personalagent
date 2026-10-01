@@ -59,6 +59,16 @@ html[data-theme='light'] {
   --tapback-bg: #e9e9eb;
   --scrim: rgba(0, 0, 0, 0.28);
   --focus-glass: rgba(255, 255, 255, 0.7);
+  /* map card: Maps-like daylight palette, drawn locally */
+  --map-land: #eef0e9;
+  --map-block: #e3e5dc;
+  --map-park: #cfe6c2;
+  --map-water: #a8d4f0;
+  --map-road: #ffffff;
+  --map-road-major: #fdf3d2;
+  --map-road-edge: #dcdcd2;
+  --map-ring: rgba(10, 132, 255, 0.16);
+  --map-ring-edge: rgba(10, 132, 255, 0.4);
 }
 
 html[data-theme='dark'] {
@@ -105,6 +115,16 @@ html[data-theme='dark'] {
   --tapback-bg: #26262a;
   --scrim: rgba(0, 0, 0, 0.5);
   --focus-glass: rgba(60, 60, 64, 0.7);
+  /* map card: the dark-mode Maps palette */
+  --map-land: #2a2d33;
+  --map-block: #32353c;
+  --map-park: #2f4436;
+  --map-water: #1f3b55;
+  --map-road: #4a4e57;
+  --map-road-major: #5f6269;
+  --map-road-edge: #23262b;
+  --map-ring: rgba(10, 132, 255, 0.22);
+  --map-ring-edge: rgba(10, 132, 255, 0.55);
 }
 
 * {

@@ -5,6 +5,7 @@ import { useStore } from '../lib/context';
 import { mmss, timeOfDay } from '../lib/time';
 import { Avatar } from './Avatar';
 import { Floating } from './Floating';
+import MapCard from './MapCard';
 import { IconCopy, IconMore, IconPause, IconPlay, IconReply, IconSmiley, IconTrash, IconX } from './Icons';
 
 const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\uFE0F|\u200D|\s){1,9}$/u;
@@ -76,12 +77,48 @@ function InkOverlay({ active }: { active: boolean }) {
 }
 
 /* ───────────────────────── audio attachment ───────────────────────── */
+/**
+ * Plays a real recording when there is one. Seeded and historical messages
+ * carry a waveform but no audio, so the simulated scrub is kept as the
+ * fallback rather than showing a play button that does nothing.
+ */
 function AudioAtt({ att, out }: { att: Attachment; out: boolean }) {
+  const real = !!att.src;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [t, setT] = useState(0);
-  const dur = att.duration ?? 12;
+  const [dur, setDur] = useState(att.duration ?? 12);
+
+  // real playback: the element is the source of truth for time and duration
   useEffect(() => {
-    if (!playing) return;
+    if (!real) return;
+    const el = audioRef.current;
+    if (!el) return;
+    const onTime = () => setT(el.currentTime);
+    const onEnd = () => {
+      setPlaying(false);
+      setT(0);
+      el.currentTime = 0;
+    };
+    const onMeta = () => {
+      // webm from MediaRecorder often reports Infinity until it is seeked
+      if (Number.isFinite(el.duration) && el.duration > 0) setDur(el.duration);
+    };
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('ended', onEnd);
+    el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('durationchange', onMeta);
+    return () => {
+      el.removeEventListener('timeupdate', onTime);
+      el.removeEventListener('ended', onEnd);
+      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('durationchange', onMeta);
+    };
+  }, [real]);
+
+  // simulated scrub for memos that have no audio behind them
+  useEffect(() => {
+    if (real || !playing) return;
     const start = performance.now() - t * 1000;
     let raf = 0;
     const tick = () => {
@@ -96,13 +133,38 @@ function AudioAtt({ att, out }: { att: Attachment; out: boolean }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, dur]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [playing, dur, real]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggle = () => {
+    if (!real) {
+      setPlaying((p) => !p);
+      return;
+    }
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) {
+      void el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    } else {
+      el.pause();
+      setPlaying(false);
+    }
+  };
+
+  const seek = (ratio: number) => {
+    const to = Math.max(0, Math.min(1, ratio)) * dur;
+    setT(to);
+    if (real && audioRef.current) audioRef.current.currentTime = to;
+  };
+
   const wf = att.waveform ?? Array.from({ length: 32 }, (_, i) => 0.3 + Math.abs(Math.sin(i)) * 0.6);
-  const progress = t / dur;
+  const progress = dur > 0 ? t / dur : 0;
+
   return (
     <div className={`att-audio ${out ? 'out' : 'in'}`}>
+      {real && <audio ref={audioRef} src={att.src} preload="metadata" />}
       <button
-        onClick={() => setPlaying((p) => !p)}
+        onClick={toggle}
+        aria-label={playing ? 'Pause' : 'Play'}
         style={{ display: 'grid', placeItems: 'center', width: 22, height: 22 }}
       >
         {playing ? <IconPause /> : <IconPlay />}
@@ -111,14 +173,14 @@ function AudioAtt({ att, out }: { att: Attachment; out: boolean }) {
         className="waveform"
         onClick={(e) => {
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          setT(((e.clientX - r.left) / r.width) * dur);
+          seek((e.clientX - r.left) / r.width);
         }}
       >
         {wf.map((h, i) => (
           <i key={i} className={i / wf.length <= progress ? 'on' : ''} style={{ height: `${h * 100}%` }} />
         ))}
       </div>
-      <span className="audio-dur">{mmss(playing || t > 0 ? dur - t : dur)}</span>
+      <span className="audio-dur">{mmss(playing || t > 0 ? Math.max(0, dur - t) : dur)}</span>
     </div>
   );
 }
@@ -150,6 +212,8 @@ function AttachmentView({
       </div>
     );
   if (att.kind === 'audio') return <AudioAtt att={att} out={out} />;
+  if (att.kind === 'location' && typeof att.lat === 'number' && typeof att.lon === 'number')
+    return <MapCard lat={att.lat} lon={att.lon} accuracy={att.accuracy} name={att.name} />;
   if (att.kind === 'link')
     return (
       <a className="att-link" href={att.src} target="_blank" rel="noreferrer">

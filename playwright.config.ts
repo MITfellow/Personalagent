@@ -12,6 +12,18 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // the camera and microphone specs drive real getUserMedia and MediaRecorder
+    // against Chromium's synthetic devices, so the media path is exercised for
+    // real rather than mocked out
+    permissions: ['geolocation'],
+    geolocation: { latitude: 28.6692, longitude: 77.4538, accuracy: 18 },
+    launchOptions: {
+      args: [
+        '--use-fake-device-for-media-stream',
+        '--use-fake-ui-for-media-stream',
+        '--autoplay-policy=no-user-gesture-required',
+      ],
+    },
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },

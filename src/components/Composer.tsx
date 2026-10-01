@@ -3,13 +3,39 @@ import type { Attachment, BubbleEffect, Chat, Message, ScreenEffect } from '../t
 import { BUBBLE_EFFECTS, SCREEN_EFFECTS } from '../types';
 import { useStore } from '../lib/context';
 import { EMOJI } from '../data/emoji';
+import { mmss } from '../lib/time';
 import { Floating } from './Floating';
-import { IconCamera, IconMic, IconPhotos, IconPlus, IconSend, IconSmiley, IconSparkle, IconWave, IconX } from './Icons';
+import {
+  IconCamera,
+  IconLocation,
+  IconMic,
+  IconPhotos,
+  IconPlus,
+  IconSend,
+  IconSmiley,
+  IconSparkle,
+  IconStop,
+  IconSubject,
+  IconWave,
+  IconX,
+} from './Icons';
 import { AttachTray, type Staged } from './AttachTray';
 import { Lightbox } from './Lightbox';
 import { MAX_FILES, decodeImage, fileKey, humanSize, isImageFile, rejectReason } from '../lib/files';
+import CameraSheet from './CameraSheet';
+import {
+  AudioRecording,
+  cameraSupported,
+  currentPosition,
+  locationSupported,
+  MediaError,
+  micSupported,
+  type Capture,
+} from '../lib/media';
+import { accuracyLabel } from '../lib/mapart';
 
-const STOCK_PHOTOS = ['/photos/golden-hour.jpg', '/photos/ceramics.jpg'];
+/** A voice memo longer than this is almost certainly a forgotten tap. */
+const MAX_RECORDING_SECONDS = 180;
 
 let aid = 0;
 const attId = () => `att${Date.now().toString(36)}${aid++}`;
@@ -38,7 +64,15 @@ export function Composer({
   const [bubbleFx, setBubbleFx] = useState<BubbleEffect>('none');
   const [screenFx, setScreenFx] = useState<ScreenEffect>('none');
   const [pop, setPop] = useState<null | { kind: 'emoji' | 'apps' | 'fx'; x: number; y: number }>(null);
-  const [recording, setRecording] = useState(0);
+  // real microphone capture: `rec` is the live take, `elapsed`/`level` drive
+  // the meter, and the whole thing is torn down on unmount so the mic light
+  // never stays on after the composer goes away
+  const recRef = useRef<AudioRecording | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [level, setLevel] = useState(0);
+  const [busy, setBusy] = useState<null | 'mic' | 'location'>(null);
+  const [camera, setCamera] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   /**
@@ -63,13 +97,6 @@ export function Composer({
   useEffect(() => {
     ta.current?.focus();
   }, [chat.id]);
-
-  // voice-memo recording timer
-  useEffect(() => {
-    if (!recording) return;
-    const t = window.setInterval(() => setRecording((r) => r + 1), 1000);
-    return () => window.clearInterval(t);
-  }, [recording]);
 
   const flushDraft = useCallback(() => {
     if (flushRef.current !== null) {
@@ -142,18 +169,164 @@ export function Composer({
   };
 
   /** stage something we built ourselves (a memo, a stock photo, a location) */
-  const stage = (att: Attachment, name: string, bytes = 0) =>
+  /**
+   * The media callbacks must stay stable — re-creating them mid-recording
+   * would restart the metering effect — so they reach the current `stage`
+   * through a ref that is kept in sync by an effect below.
+   */
+  const stageRef = useRef<(att: Attachment, name: string, bytes?: number, detail?: string) => void>(
+    () => {},
+  );
+
+  /* ── real microphone ─────────────────────────────────────────── */
+
+  const startRecording = useCallback(async () => {
+    if (recRef.current) return;
+    setBusy('mic');
+    try {
+      recRef.current = await AudioRecording.start();
+      setElapsed(0);
+      setLevel(0);
+      setRecording(true);
+    } catch (e) {
+      setNotice(e instanceof MediaError ? e.message : 'Could not start recording.');
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  const finishRecording = useCallback(async () => {
+    const rec = recRef.current;
+    if (!rec) return;
+    recRef.current = null;
+    setRecording(false);
+    try {
+      const take = await rec.finish();
+      stageRef.current(
+        {
+          id: attId(),
+          kind: 'audio',
+          src: take.src,
+          duration: take.duration,
+          waveform: take.waveform,
+          mimeType: take.mimeType,
+          size: humanSize(take.bytes),
+        },
+        'Voice memo',
+        take.bytes,
+        `${mmss(take.duration)} · ${humanSize(take.bytes)}`,
+      );
+    } catch (e) {
+      setNotice(e instanceof MediaError ? e.message : 'The recording failed.');
+    } finally {
+      setElapsed(0);
+      setLevel(0);
+    }
+  }, []);
+
+  const cancelRecording = useCallback(() => {
+    recRef.current?.cancel();
+    recRef.current = null;
+    setRecording(false);
+    setElapsed(0);
+    setLevel(0);
+  }, []);
+
+  /**
+   * While a take is running, poll the recorder once per frame for its real
+   * elapsed time and input level. Sampling here (rather than on a 1s timer)
+   * is what lets the meter move with the speaker's voice.
+   */
+  useEffect(() => {
+    if (!recording) return;
+    let raf = 0;
+    const tick = () => {
+      const rec = recRef.current;
+      if (rec) {
+        setLevel(rec.level());
+        const e = rec.elapsed;
+        setElapsed(e);
+        if (e >= MAX_RECORDING_SECONDS) {
+          void finishRecording();
+          return;
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [recording]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the microphone must not stay open if this composer unmounts mid-take
+  useEffect(
+    () => () => {
+      recRef.current?.cancel();
+      recRef.current = null;
+    },
+    [],
+  );
+
+  /* ── real camera ─────────────────────────────────────────────── */
+
+  const onCapture = useCallback((shot: Capture) => {
+    stageRef.current(
+      {
+        id: attId(),
+        kind: 'image',
+        src: shot.src,
+        width: shot.width,
+        height: shot.height,
+        size: humanSize(shot.bytes),
+      },
+      `Photo · ${shot.width}×${shot.height}`,
+      shot.bytes,
+    );
+  }, []);
+
+  /* ── real location ───────────────────────────────────────────── */
+
+  const shareLocation = useCallback(async () => {
+    setBusy('location');
+    try {
+      const place = await currentPosition();
+      stageRef.current(
+        {
+          id: attId(),
+          kind: 'location',
+          lat: place.lat,
+          lon: place.lon,
+          accuracy: place.accuracy,
+          name: 'Current Location',
+        },
+        'Current Location',
+        0,
+        accuracyLabel(place.accuracy),
+      );
+    } catch (e) {
+      setNotice(e instanceof MediaError ? e.message : 'Could not share your location.');
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  const stage = (att: Attachment, name: string, bytes = 0, detail?: string) =>
     setStaged((a) => [
       ...a,
       {
         id: att.id,
         name,
         bytes,
+        detail,
         status: 'ready',
         att,
         preview: att.kind === 'image' ? att.src : undefined,
       },
     ]);
+
+  // refs cannot be written during render
+  useEffect(() => {
+    stageRef.current = stage;
+  });
 
   /**
    * Stage files for sending. Images are decoded and downscaled off the main
@@ -354,30 +527,27 @@ export function Composer({
         onPreview={setZoom}
       />
 
-      {recording > 0 && (
-        <div className="reply-banner" style={{ background: 'rgba(255,59,48,.14)' }}>
-          <span
-            style={{ width: 8, height: 8, borderRadius: 4, background: 'var(--red)', animation: 'fade-in .6s infinite alternate' }}
-          />
-          <div className="rb-text">Recording… {recording}s</div>
-          <button
-            className="btn"
-            onClick={() => {
-              stage(
-                {
-                  id: attId(),
-                  kind: 'audio',
-                  duration: recording,
-                  waveform: Array.from({ length: 34 }, () => 0.15 + Math.random() * 0.85),
-                },
-                `Voice memo · ${recording}s`,
-              );
-              setRecording(0);
-            }}
-          >
-            Stop
+      {recording && (
+        <div className="rec-bar" role="status" aria-live="polite">
+          <span className="rec-dot" />
+          <div className="rb-text">
+            Recording <span className="rec-time">{mmss(elapsed)}</span>
+          </div>
+          {/* a live meter off the real input level: silence looks like silence */}
+          <div className="rec-meter" aria-hidden="true">
+            {Array.from({ length: 18 }, (_, i) => (
+              <i
+                key={i}
+                style={{
+                  height: `${Math.max(8, Math.min(100, level * 130 * (0.55 + Math.sin(i * 1.7 + elapsed * 6) * 0.45)))}%`,
+                }}
+              />
+            ))}
+          </div>
+          <button className="btn primary" onClick={() => void finishRecording()}>
+            <IconStop size={11} /> Stop
           </button>
-          <button className="btn" onClick={() => setRecording(0)}>
+          <button className="btn" onClick={cancelRecording}>
             Cancel
           </button>
         </div>
@@ -424,7 +594,13 @@ export function Composer({
               <IconSend />
             </button>
           ) : (
-            <button className="round bare" title="Record an audio message" onClick={() => setRecording(1)}>
+            <button
+              className="round bare"
+              title={micSupported() ? 'Record an audio message' : 'No microphone available'}
+              aria-label="Record an audio message"
+              disabled={!micSupported() || recording || busy === 'mic'}
+              onClick={() => void startRecording()}
+            >
               <IconWave size={16} />
             </button>
           )}
@@ -487,9 +663,10 @@ export function Composer({
             </button>
             <button
               className="app-tile"
+              disabled={!cameraSupported()}
+              title={cameraSupported() ? 'Take a photo' : 'No camera available'}
               onClick={() => {
-                const src = STOCK_PHOTOS[staged.length % STOCK_PHOTOS.length];
-                stage({ id: attId(), kind: 'image', src }, src.split('/').pop() ?? 'Photo');
+                setCamera(true);
                 closePop();
               }}
             >
@@ -500,9 +677,11 @@ export function Composer({
             </button>
             <button
               className="app-tile"
+              disabled={!micSupported() || recording}
+              title={micSupported() ? 'Record a voice memo' : 'No microphone available'}
               onClick={() => {
-                setRecording(1);
                 closePop();
+                void startRecording();
               }}
             >
               <span className="glyph" style={{ background: 'linear-gradient(160deg,#ff6b6b,#c9184a)' }}>
@@ -512,23 +691,15 @@ export function Composer({
             </button>
             <button
               className="app-tile"
+              disabled={!locationSupported() || busy === 'location'}
+              title={locationSupported() ? 'Share your current location' : 'Location is unavailable'}
               onClick={() => {
-                stage(
-                  {
-                    id: attId(),
-                    kind: 'link',
-                    src: 'https://maps.example/current',
-                    title: 'My Current Location',
-                    domain: 'maps.example',
-                    description: 'Shared from Maps · accurate to 10 m',
-                  },
-                  'My Current Location',
-                );
                 closePop();
+                void shareLocation();
               }}
             >
               <span className="glyph" style={{ background: 'linear-gradient(160deg,#5ac8fa,#0a84ff)' }}>
-                📍
+                <IconLocation size={15} />
               </span>
               Location
             </button>
@@ -555,7 +726,7 @@ export function Composer({
               }}
             >
               <span className="glyph" style={{ background: 'linear-gradient(160deg,#a78bfa,#6c4dff)' }}>
-                T
+                <IconSubject size={15} />
               </span>
               Subject
             </button>
@@ -621,6 +792,8 @@ export function Composer({
           </div>
         </div>
       )}
+
+      {camera && <CameraSheet onCapture={onCapture} onClose={() => setCamera(false)} />}
 
       {zoom && (
         <Lightbox items={[{ src: zoom, caption: 'Not sent yet' }]} startSrc={zoom} onClose={() => setZoom(null)} />

@@ -308,6 +308,62 @@ Covered by unit tests against a real IndexedDB (`fake-indexeddb`) and by
 `e2e/storage.spec.ts`, which seeds an 8 MB account, reloads, proves every photo
 survived, and asserts the same payload is still refused by `localStorage`.
 
+## Real devices
+
+The `+` menu used to be a demo: Camera inserted one of two canned JPEGs, Audio
+counted seconds and produced a random waveform with no sound behind it,
+Location stashed a hardcoded link to `maps.example`, and two of the six tiles
+used an emoji and a bare letter where an icon belonged. All six are now real.
+
+**Camera** opens the actual device through `getUserMedia`, shows a live
+preview, and captures a frame to a canvas — clamped to a 1600 px long edge so a
+4K webcam doesn't drop a 6 MB still into the thread. The front lens is
+mirrored, and the capture is mirrored to match, because the photo should look
+like what you were looking at. A shot is held for review (*Retake* / *Use
+Photo*) rather than fired straight into the conversation, and the tracks are
+stopped on close so the camera light actually goes out.
+
+**Audio** records through `MediaRecorder` in the best container the browser
+supports (Opus in WebM, falling back through Ogg and MP4). An `AnalyserNode`
+taps the stream while it runs, so the bar in the composer is a live meter of
+your voice, and the waveform stored on the message is the shape of what was
+actually said — peak-resampled to the 34 bars a bubble draws and normalised so
+a quiet memo still reads as a waveform. Playback in the thread is the real
+recording. Takes are capped at three minutes, and the microphone is released
+on cancel, on send, and if the composer unmounts mid-take.
+
+**Location** reads a real fix from `navigator.geolocation` and sends the
+coordinates, the accuracy, and a map.
+
+### The map is drawn, not fetched
+
+There is no backend, and fetching map tiles would hand the user's coordinates
+to a third party on every render. So the card draws its own street plan,
+generated deterministically *from the coordinates themselves* with a seeded
+PRNG: avenues, cross streets, a diagonal, blocks, sometimes a park or a river,
+then casing-under-carriageway strokes so the roads read as roads. The same
+place always draws the same map; a different place draws a different one; the
+seed is rounded to ~11 m so GPS jitter doesn't redraw the neighbourhood while
+you sit still. The pin, the accuracy ring and the DMS coordinates are the real
+reading — the streets are an illustration, and the card is honest about which
+is which. An E2E test asserts that sharing a location issues **no off-origin
+requests at all**.
+
+### When the hardware says no
+
+Every one of these can fail for mundane reasons, and a rejected promise is not
+an error message. Failures are mapped to sentences worth reading — "Camera
+access was blocked. Allow it in your browser's site settings and try again.",
+"No microphone found on this device.", "Another app is using the camera." —
+and tiles for missing hardware are disabled rather than dead. Secure-context
+and unsupported-browser cases are separated out, because "use https" and "your
+browser can't do this" are different problems.
+
+Tested against Chromium's synthetic camera and microphone and a Playwright-set
+geolocation, so the real `getUserMedia` → `MediaRecorder` → data-URL →
+IndexedDB → playback path runs end to end in CI; refusals are covered by
+overriding the APIs to reject.
+
 ## Production
 
 Everything needed to actually ship this, not just demo it.

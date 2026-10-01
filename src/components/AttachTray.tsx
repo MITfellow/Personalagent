@@ -1,6 +1,7 @@
 import type { Attachment } from '../types';
 import { fileTint, humanSize, shortName, typeLabel } from '../lib/files';
-import { IconX } from './Icons';
+import { IconWaveform, IconX } from './Icons';
+import MapCard from './MapCard';
 
 /** A file in the composer that hasn't been sent yet. */
 export interface Staged {
@@ -13,22 +14,28 @@ export interface Staged {
   att?: Attachment;
   /** thumbnail for images */
   preview?: string;
+  /** replaces the size line: "Accurate to 18 m", "0:04 · 31 KB" */
+  detail?: string;
 }
 
 function Tile({ item, onRemove, onPreview }: { item: Staged; onRemove: () => void; onPreview?: () => void }) {
   const image = !!item.preview;
+  // a staged location and a staged voice memo are not files, so they get the
+  // thing itself as their thumbnail rather than a filename extension
+  const place = item.att?.kind === 'location' ? item.att : null;
+  const memo = item.att?.kind === 'audio' ? item.att : null;
   const failed = item.status === 'error';
   const label =
     item.status === 'error'
       ? `${item.name} — ${item.error}`
-      : `${item.name}, ${humanSize(item.bytes)}`;
+      : `${item.name}, ${item.detail ?? humanSize(item.bytes)}`;
 
   return (
     <div className={`stage-tile ${item.status}`} title={label}>
       <div
         className="stage-thumb"
         // a failed tile is red, so the per-type tint must not override it
-        style={image || failed ? undefined : { background: fileTint(item.name) }}
+        style={image || failed || place ? undefined : { background: fileTint(item.name) }}
         onClick={image && item.status === 'ready' ? onPreview : undefined}
         role={image && item.status === 'ready' ? 'button' : undefined}
         aria-label={image && item.status === 'ready' ? `Preview ${item.name}` : undefined}
@@ -39,6 +46,14 @@ function Tile({ item, onRemove, onPreview }: { item: Staged; onRemove: () => voi
           </span>
         ) : image ? (
           <img src={item.preview} alt="" />
+        ) : place && typeof place.lat === 'number' && typeof place.lon === 'number' ? (
+          <span className="stage-map">
+            <MapCard lat={place.lat} lon={place.lon} accuracy={place.accuracy} small />
+          </span>
+        ) : memo ? (
+          <span className="stage-glyph memo" aria-hidden="true">
+            <IconWaveform size={18} />
+          </span>
         ) : (
           <span className="stage-ext">{typeLabel(item.name)}</span>
         )}
@@ -48,7 +63,7 @@ function Tile({ item, onRemove, onPreview }: { item: Staged; onRemove: () => voi
       <div className="stage-meta">
         <div className="stage-name">{shortName(item.name, 18)}</div>
         <div className={`stage-size ${item.status === 'error' ? 'bad' : ''}`}>
-          {item.status === 'error' ? item.error : humanSize(item.bytes)}
+          {item.status === 'error' ? item.error : (item.detail ?? humanSize(item.bytes))}
         </div>
       </div>
 

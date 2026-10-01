@@ -201,3 +201,46 @@ export const IconFaceTime = ({ size = 19 }: P) => (
     <path d="M16.9 11.2 21 8.4c.5-.35 1.1 0 1.1.6v6c0 .6-.6.95-1.1.6l-4.1-2.8v-1.6Z" />
   </svg>
 );
+
+/* ── device features ─────────────────────────────────────────────── */
+
+/** Maps' compass arrow, the glyph macOS uses for "share my location". */
+export const IconLocation = ({ size = 16 }: P) => (
+  <svg {...base(size)} fill="currentColor">
+    <path d="M20.6 3.4a1 1 0 0 0-1.2-1.2L4.3 7.7c-1.1.4-1 2 .1 2.3l6 1.7a1 1 0 0 1 .7.7l1.7 6c.3 1.1 1.9 1.2 2.3.1L20.6 3.4Z" />
+  </svg>
+);
+
+/** A subject line: a heading rule over body text. */
+export const IconSubject = ({ size = 16 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={2.1} strokeLinecap="round">
+    <path d="M4 6h16" />
+    <path d="M4 11h11" />
+    <path d="M4 16h16" />
+    <path d="M4 21h8" opacity={0.45} />
+  </svg>
+);
+
+/** Filled square: stop a take. */
+export const IconStop = ({ size = 13 }: P) => (
+  <svg {...base(size)} fill="currentColor">
+    <rect x="6" y="6" width="12" height="12" rx="2.5" />
+  </svg>
+);
+
+/** Rotate the camera between the front and rear lens. */
+export const IconFlip = ({ size = 16 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3.5 9a8.5 8.5 0 0 1 14.2-3.3L21 9" />
+    <path d="M21 4.5V9h-4.5" />
+    <path d="M20.5 15a8.5 8.5 0 0 1-14.2 3.3L3 15" />
+    <path d="M3 19.5V15h4.5" />
+  </svg>
+);
+
+/** A microphone with its level shown as rising bars. */
+export const IconWaveform = ({ size = 16 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+    <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
+  </svg>
+);
