@@ -1,0 +1,174 @@
+/* ───────────────────────────── design tokens ───────────────────────────── */
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI',
+    Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --blue: #0a84ff;
+  --blue-2: #0060df;
+  --green: #30d158;
+  --green-2: #1db954;
+  --red: #ff3b30;
+  --yellow: #ffd60a;
+
+  --radius-bubble: 17px;
+  --radius-card: 14px;
+
+  --ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html[data-theme='light'] {
+  --desktop: linear-gradient(160deg, #cfd8e6 0%, #b9c6da 45%, #a8b7cd 100%);
+  --window-edge: rgba(0, 0, 0, 0.14);
+  --glass: rgba(255, 255, 255, 0.78);
+  --glass-hover: rgba(255, 255, 255, 0.95);
+  --glass-edge: rgba(0, 0, 0, 0.07);
+  --pill: rgba(255, 255, 255, 0.92);
+  --chrome-top: rgba(255, 255, 255, 0.88);
+  --chrome-bottom: rgba(255, 255, 255, 0);
+  --bg: #ffffff;
+  --bg-sidebar: #f6f6f7;
+  --bg-sidebar-solid: #f2f2f4;
+  --bg-elevated: #ffffff;
+  --bg-chrome: rgba(246, 246, 248, 0.72);
+  --hairline: rgba(0, 0, 0, 0.1);
+  --hairline-soft: rgba(0, 0, 0, 0.06);
+
+  --text: #000000;
+  --text-2: rgba(60, 60, 67, 0.62);
+  --text-3: rgba(60, 60, 67, 0.36);
+
+  --bubble-in: #e9e9eb;
+  --bubble-in-text: #000;
+  --bubble-out-top: #0b84ff;
+  --bubble-out-bottom: #0b84ff;
+  --bubble-out-text: #fff;
+  --bubble-sms-top: #00de51;
+  --bubble-sms-bottom: #00de51;
+
+  --row-hover: rgba(0, 0, 0, 0.04);
+  --row-active: #0a84ff;
+  --row-active-text: #fff;
+
+  --field: transparent;
+  --field-border: rgba(0, 0, 0, 0.14);
+  --search-bg: rgba(118, 118, 128, 0.12);
+
+  --menu-bg: rgba(250, 250, 250, 0.82);
+  --menu-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --tapback-bg: #e9e9eb;
+  --scrim: rgba(0, 0, 0, 0.28);
+  --focus-glass: rgba(255, 255, 255, 0.7);
+}
+
+html[data-theme='dark'] {
+  --desktop: linear-gradient(160deg, #23262c 0%, #16181c 50%, #0d0e11 100%);
+  --window-edge: rgba(255, 255, 255, 0.14);
+  --glass: rgba(60, 60, 64, 0.72);
+  --glass-hover: rgba(80, 80, 86, 0.85);
+  --glass-edge: rgba(255, 255, 255, 0.09);
+  --pill: rgba(58, 58, 62, 0.92);
+  --chrome-top: rgba(0, 0, 0, 0.78);
+  --chrome-bottom: rgba(0, 0, 0, 0);
+  --bg: #000000;
+  --bg-sidebar: #1c1c1e;
+  --bg-sidebar-solid: #1c1c1e;
+  /* elevated surfaces (pin balloons, pin tapbacks, cards, the jump button) must
+     sit ABOVE the #1c1c1e sidebar, not match it */
+  --bg-elevated: #2c2c2e;
+  --bg-chrome: rgba(30, 30, 32, 0.72);
+  --hairline: rgba(255, 255, 255, 0.12);
+  --hairline-soft: rgba(255, 255, 255, 0.07);
+
+  --text: #ffffff;
+  --text-2: rgba(235, 235, 245, 0.6);
+  --text-3: rgba(235, 235, 245, 0.3);
+
+  --bubble-in: #26262a;
+  --bubble-in-text: #fff;
+  --bubble-out-top: #0a84ff;
+  --bubble-out-bottom: #0a84ff;
+  --bubble-out-text: #fff;
+  --bubble-sms-top: #00cf4b;
+  --bubble-sms-bottom: #00cf4b;
+
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --row-active: #0a84ff;
+  --row-active-text: #fff;
+
+  --field: transparent;
+  --field-border: rgba(255, 255, 255, 0.18);
+  --search-bg: rgba(118, 118, 128, 0.24);
+
+  --menu-bg: rgba(44, 44, 46, 0.86);
+  --menu-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --tapback-bg: #26262a;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --focus-glass: rgba(60, 60, 64, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: rgba(10, 132, 255, 0.3);
+}
+
+/* thin iOS-style scrollbars */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(130, 130, 140, 0.45);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
