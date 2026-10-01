@@ -1,9 +1,11 @@
 import type { Store } from '../types';
 import { buildSeedStore } from '../data/seed';
-import { idbDelete, idbGet, idbPut, idbSupported } from './db';
+import { dropLegacyDb, idbDelete, idbGet, idbGetLegacy, idbPut, idbSupported } from './db';
 import { inlineBlobs, restoreBlobs } from './blobs';
 
-export const STORAGE_KEY = 'messages.app.state';
+export const STORAGE_KEY = 'veo.app.state';
+/** Keys this app wrote under its previous names, newest first. */
+const LEGACY_STORAGE_KEYS = ['messages.app.state', 'imessage-clone-v2'];
 export const SCHEMA_VERSION = 3;
 /** key inside the IndexedDB object store */
 export const STATE_KEY = 'state';
@@ -88,7 +90,8 @@ function migrate(raw: any): Store | null {
 /** Read and validate whatever is in localStorage, with its stamp. */
 function readLocal(): { state: Store; savedAt: number } | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('imessage-clone-v2');
+    let raw = localStorage.getItem(STORAGE_KEY);
+    for (const key of LEGACY_STORAGE_KEYS) raw = raw ?? localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const state = migrate(parsed);
@@ -117,12 +120,29 @@ export async function loadState(): Promise<Store> {
     idb = undefined;
   }
 
+  // the app used to be called Messages, and its database with it; an account
+  // created back then is carried over rather than orphaned
+  let migratedLegacy = false;
+  if (!idb?.state) {
+    const legacy = await idbGetLegacy<Envelope>(STATE_KEY);
+    if (legacy?.state) {
+      idb = legacy;
+      migratedLegacy = true;
+    }
+  }
+
   const idbState = idb?.state ? migrate(idb) : null;
   const idbAt = typeof idb?.savedAt === 'number' ? idb.savedAt : -1;
   const localAt = local?.savedAt ?? -1;
 
   if (idbState && idbAt >= localAt) {
     lastWriteAt = idbAt;
+    if (migratedLegacy) {
+      // write it under the new name first, then let the old database go
+      void saveState(idbState)
+        .then(() => dropLegacyDb())
+        .catch(() => {});
+    }
     return idbState;
   }
 
@@ -195,6 +215,7 @@ async function writeNow(state: Store): Promise<SaveResult> {
       // the legacy copy would otherwise shadow IndexedDB on the next load
       try {
         localStorage.removeItem(STORAGE_KEY);
+        for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
       } catch {
         /* ignore */
       }

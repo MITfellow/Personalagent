@@ -65,7 +65,7 @@ function Shell() {
 
   // unread badge in the tab title, like the Dock badge
   useEffect(() => {
-    document.title = unread > 0 ? `Messages (${unread})` : 'Messages';
+    document.title = unread > 0 ? `Veo (${unread})` : 'Veo';
   }, [unread]);
 
   const toggleDetails = useCallback(

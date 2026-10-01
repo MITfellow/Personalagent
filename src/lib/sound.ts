@@ -1,6 +1,6 @@
 /**
  * Tiny synthesized sound kit — no asset files, all WebAudio.
- * Approximates the iMessage "swoosh" (send), "pop" (receive) and tapback thunk.
+ * The Veo sound kit: a "swoosh" on send, a "pop" on receive and a tapback thunk.
  */
 let ctx: AudioContext | null = null;
 let enabled = true;

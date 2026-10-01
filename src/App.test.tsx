@@ -17,7 +17,7 @@ async function boot() {
   return user;
 }
 
-describe('Messages app', () => {
+describe('Veo app', () => {
   it('renders pinned tiles plus the unpinned conversation list', async () => {
     await boot();
     expect(screen.getAllByRole('option').length).toBeGreaterThan(1);

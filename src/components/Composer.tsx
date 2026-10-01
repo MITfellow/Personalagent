@@ -635,8 +635,8 @@ export function Composer({
               ref={ta}
               rows={1}
               value={draft}
-              placeholder={chat.sms ? 'Text Message' : 'iMessage'}
-              aria-label={chat.sms ? 'Text Message' : 'iMessage'}
+              placeholder={chat.sms ? 'Text Message' : 'Veo message'}
+              aria-label={chat.sms ? 'Text Message' : 'Veo message'}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKeyDown}
               onPaste={(e) => {

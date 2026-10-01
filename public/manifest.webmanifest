@@ -1,7 +1,7 @@
 {
-  "name": "Messages",
-  "short_name": "Messages",
-  "description": "A pixel-faithful Messages client: tapbacks, effects, camera, voice memos, any-file attachments and full offline support.",
+  "name": "Veo",
+  "short_name": "Veo",
+  "description": "Veo is a fast, private messaging app: tapbacks, effects, camera, voice memos, any-file attachments and full offline support. Everything stays on your device.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

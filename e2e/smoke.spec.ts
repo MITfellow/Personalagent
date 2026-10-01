@@ -9,7 +9,7 @@ test('boots with the stored conversations', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByPlaceholder('Search')).toBeVisible();
   await expect(page.locator('.conv-row, .pinned-item').first()).toBeVisible();
-  await expect(page).toHaveTitle(/Messages/);
+  await expect(page).toHaveTitle(/Veo/);
 });
 
 test('sends a message, gets a reply and a delivery receipt', async ({ page, isMobile }) => {

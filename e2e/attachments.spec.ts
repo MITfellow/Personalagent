@@ -97,10 +97,10 @@ test('a big photo is downscaled before it is stored', async ({ page }) => {
     const att = msgs.flatMap((m) => m.attachments).filter((a) => a.kind === 'image' && a.src?.startsWith('data:')).pop();
     if (!att) {
       const dbg = await (async () => {
-        const open = () => new Promise<IDBDatabase>((res, rej) => { const r = indexedDB.open('messages', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+        const open = () => new Promise<IDBDatabase>((res, rej) => { const r = indexedDB.open('veo', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
         const db = await open();
         const idb = await new Promise<any>((res) => { const tx = db.transaction('app', 'readonly'); const r = tx.objectStore('app').get('state'); r.onsuccess = () => res(r.result ?? null); r.onerror = () => res('ERR'); });
-        const ls = localStorage.getItem('messages.app.state');
+        const ls = localStorage.getItem('veo.app.state');
         return { idbAt: idb?.savedAt, idbMsgs: idb?.state?.messages?.length, lsAt: ls ? JSON.parse(ls).savedAt : null, lsMsgs: ls ? JSON.parse(ls).state.messages.length : null, envAt: env.savedAt, envMsgs: msgs.length };
       })();
       throw new Error('DBG ' + JSON.stringify(dbg));
@@ -122,6 +122,9 @@ test('a big photo is downscaled before it is stored', async ({ page }) => {
 });
 
 test('dragging files over the composer offers a drop target', async ({ page }) => {
+  // the evaluate below reaches straight into the DOM, so wait for React to
+  // have put something there — "no drop veil yet" is also true before mount
+  await page.locator('.composer-wrap').waitFor();
   await expect(page.locator('.drop-veil')).toHaveCount(0);
 
   await page.evaluate(() => {

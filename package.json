@@ -1,5 +1,5 @@
 {
-  "name": "messages",
+  "name": "veo",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -36,5 +36,5 @@
     "vite": "^8.3.0",
     "vitest": "^3.2.7"
   },
-  "description": "A Messages client for the web — conversations, tapbacks, effects and offline support."
+  "description": "A Messages client for the web \u2014 conversations, tapbacks, effects and offline support."
 }

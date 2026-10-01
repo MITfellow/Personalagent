@@ -19,6 +19,7 @@ export interface SendOptions {
   replyTo?: string;
   bubbleEffect?: BubbleEffect;
   screenEffect?: ScreenEffect;
+  forwarded?: boolean;
 }
 
 export interface Ctx {

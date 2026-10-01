@@ -1,9 +1,9 @@
-/* Messages — offline cache.
+/* Veo — offline cache.
    Strategy: precache the shell, then stale-while-revalidate for same-origin GETs.
    Navigations fall back to the cached index.html so the SPA boots offline. */
 
 /* The build id and precache list below are injected at build time (vite.config.ts). */
-const VERSION = 'messages-__BUILD_ID__';
+const VERSION = 'veo-__BUILD_ID__';
 const SHELL = [
   '/',
   '/index.html',

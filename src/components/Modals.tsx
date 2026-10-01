@@ -7,6 +7,12 @@ import { Memoji } from './Memoji';
 import { useMemojiSpec } from '../lib/useMemoji';
 import { isAddressable, makeContact } from '../lib/contacts';
 import { IconCheck, IconPlus, IconSearch } from './Icons';
+import { Logo } from './Logo';
+
+/* Injected at build time (see vite.config.ts). The guard keeps the component
+   renderable under any runner that does not define them. */
+const VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+const BUILD_DATE = typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : 'locally';
 
 export function NewMessageModal({ onClose }: { onClose: () => void }) {
   const { state, startChatWith, dispatch } = useStore();
@@ -316,7 +322,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7 }}>
             <div>⌘K — search · ⌘N — new message</div>
             <div>↩ send · ⇧↩ new line · ⌥↑ / ⌥↓ switch conversation</div>
-            <div>Right-click a bubble for tapbacks, reply, edit & unsend</div>
+            <div>Right-click a bubble for tapbacks, reply, forward, edit & unsend</div>
+          </div>
+
+          <div className="panel-label" style={{ marginTop: 6 }}>
+            About
+          </div>
+          <div className="about-row">
+            <Logo size={44} title="Veo" />
+            <div>
+              <div className="about-name">Veo</div>
+              <div className="about-meta">
+                Version {VERSION} · built {BUILD_DATE}
+              </div>
+              <div className="about-meta">
+                Every message, photo and file stays on this device.
+              </div>
+            </div>
           </div>
         </div>
         <footer>

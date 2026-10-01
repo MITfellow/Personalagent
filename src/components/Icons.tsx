@@ -270,3 +270,11 @@ export const IconDoc = ({ size = 18 }: P) => (
     <path d="M14 3v5h5" />
   </svg>
 );
+
+/** A reply arrow, mirrored: pass this message on to someone else. */
+export const IconForward = ({ size = 14 }: P) => (
+  <svg {...base(size)} stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 7 19 12 14 17" />
+    <path d="M19 12H9a4 4 0 0 0-4 4v2" />
+  </svg>
+);

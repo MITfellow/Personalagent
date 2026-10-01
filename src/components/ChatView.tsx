@@ -5,6 +5,7 @@ import { ChatAvatar } from './Avatar';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { IconBack, IconChevron, IconFaceTime } from './Icons';
+import { Wordmark } from './Logo';
 
 export function ChatView({ onBack, onToggleDetails }: { onBack: () => void; onToggleDetails: () => void }) {
   const { activeChat, chatContacts, chatTitle } = useStore();
@@ -22,7 +23,7 @@ export function ChatView({ onBack, onToggleDetails }: { onBack: () => void; onTo
     return (
       <section className="chat" id="main" aria-label="Conversation">
         <div className="no-chat">
-          <div className="big">💬</div>
+          <Wordmark size={46} />
           <div>
             <div style={{ fontSize: 15, color: 'var(--text-2)' }}>No Conversation Selected</div>
             <div style={{ fontSize: 12.5, marginTop: 4 }}>Pick one on the left, or press ⌘N to start a new one.</div>

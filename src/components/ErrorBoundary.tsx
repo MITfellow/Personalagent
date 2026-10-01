@@ -17,7 +17,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // In a real deployment this is where Sentry/Bugsnag would be called.
-    console.error('[Messages] render error', error, info.componentStack);
+    console.error('[Veo] render error', error, info.componentStack);
   }
 
   render() {
@@ -30,7 +30,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="crash-glyph" aria-hidden="true">
             !
           </div>
-          <h1>Messages stopped responding</h1>
+          <h1>Veo stopped responding</h1>
           <p>
             Something went wrong while drawing this screen. Your conversations are still saved on
             this device.

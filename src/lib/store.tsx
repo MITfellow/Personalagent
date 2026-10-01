@@ -314,7 +314,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
         if (!chat.muted) {
           playReceive();
-          notify(state.contacts[authorId]?.name ?? 'Messages', body, chatId);
+          notify(state.contacts[authorId]?.name ?? 'Veo', body, chatId);
         }
       };
 
@@ -364,6 +364,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         replyTo: opts.replyTo,
         bubbleEffect: opts.bubbleEffect ?? 'none',
         screenEffect: opts.screenEffect ?? 'none',
+        forwarded: opts.forwarded,
       };
       dispatch({ type: 'push', message: msg });
       dispatch({ type: 'draft', chatId, value: '' });

@@ -1,10 +1,10 @@
 import type { Page } from '@playwright/test';
 import { buildDemoStore } from '../src/test/demo-world';
 
-const STORAGE_KEY = 'messages.app.state';
+const STORAGE_KEY = 'veo.app.state';
 const SCHEMA_VERSION = 3;
 
-const DB_NAME = 'messages';
+const DB_NAME = 'veo';
 const STORE = 'app';
 const STATE_KEY = 'state';
 

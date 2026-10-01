@@ -89,13 +89,13 @@ test('an existing localStorage account is migrated into the database', async ({ 
   // the fixture seeds localStorage the way an older build left it behind; once
   // the app has booted, the legacy copy is gone and the data is in the database
   await expect
-    .poll(async () => page.evaluate(() => localStorage.getItem('messages.app.state')))
+    .poll(async () => page.evaluate(() => localStorage.getItem('veo.app.state')))
     .toBeNull();
 
   const inDb = await page.evaluate(
     async () =>
       new Promise<number>((resolve) => {
-        const req = indexedDB.open('messages', 1);
+        const req = indexedDB.open('veo', 1);
         req.onsuccess = () => {
           const tx = req.result.transaction('app', 'readonly');
           const get = tx.objectStore('app').get('state');

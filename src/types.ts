@@ -102,6 +102,8 @@ export interface Message {
   /** invisible ink revealed locally */
   revealed?: boolean;
   edited?: boolean;
+  /** passed on from another conversation */
+  forwarded?: boolean;
   unsent?: boolean;
   /** system notices: "Name named the conversation ..." */
   system?: boolean;

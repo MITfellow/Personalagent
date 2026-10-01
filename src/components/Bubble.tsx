@@ -10,6 +10,7 @@ import { downloadAttachment, openAttachment, useAttachmentUrl } from '../lib/blo
 import { classify, describeType, fileTint, shortName, typeLabel } from '../lib/files';
 import {
   IconCopy,
+  IconForward,
   IconDownload,
   IconMore,
   IconOpen,
@@ -20,6 +21,7 @@ import {
   IconTrash,
   IconX,
 } from './Icons';
+import { ForwardModal } from './ForwardModal';
 
 const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\uFE0F|\u200D|\s){1,9}$/u;
 
@@ -347,6 +349,7 @@ function BubbleBase({
   onJumpTo,
 }: BubbleProps) {
   const { state, dispatch, react, retrySend } = useStore();
+  const [forwarding, setForwarding] = useState(false);
   const out = msg.authorId === 'me';
   const author = out ? null : state.contacts[msg.authorId];
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -432,6 +435,12 @@ function BubbleBase({
 
         <div className="stack">
           {showName && isGroup && !out && author && <div className="sender-name">{author.name.split(' ')[0]}</div>}
+
+          {msg.forwarded && (
+            <div className={`forwarded-tag ${out ? 'out' : 'in'}`}>
+              <IconForward size={11} /> Forwarded
+            </div>
+          )}
 
           {replyTarget && (
             <div className="reply-quote" onClick={() => onJumpTo(replyTarget.id)}>
@@ -580,6 +589,15 @@ function BubbleBase({
               >
                 <IconCopy /> Copy
               </button>
+              <button
+                className="menu-item"
+                onClick={() => {
+                  setForwarding(true);
+                  setMenu(null);
+                }}
+              >
+                <IconForward /> Forward…
+              </button>
               {out && !msg.unsent && (
                 <>
                   <button
@@ -617,6 +635,8 @@ function BubbleBase({
           </div>
         </Floating>
       )}
+
+      {forwarding && <ForwardModal msg={msg} onClose={() => setForwarding(false)} />}
     </>
   );
 }

@@ -81,10 +81,10 @@ export default function StoragePanel({ onNotice }: { onNotice: (msg: string) => 
             className="btn primary"
             onClick={async () => {
               const accepted = await promptInstall();
-              if (accepted) onNotice('Messages is installing.');
+              if (accepted) onNotice('Veo is installing.');
             }}
           >
-            Install Messages
+            Install Veo
           </button>
           <div className="storage-line muted">
             Adds it to your dock or Start menu, opens in its own window, and lets it open photos,

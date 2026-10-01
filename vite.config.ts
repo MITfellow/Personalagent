@@ -25,8 +25,17 @@ function serviceWorkerManifest() {
   };
 }
 
+const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
+  version: string;
+};
+
 export default defineConfig({
   plugins: [react(), serviceWorkerManifest()],
+  // surfaced in Settings → About, so a bug report can name the build it came from
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

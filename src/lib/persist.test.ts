@@ -154,3 +154,58 @@ describe('concurrent writes', () => {
 });
 
 const STATE_KEY_FOR_TEST = 'state';
+
+describe('the rename from Messages to Veo', () => {
+  /** Writes an envelope into the pre-rename database, by hand. */
+  const seedLegacyDb = (state: unknown, savedAt: number) =>
+    new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open('messages', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('app');
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction('app', 'readwrite');
+        tx.objectStore('app').put({ version: 3, savedAt, state }, 'state');
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+  it('carries an account over from the old database name', async () => {
+    const old = buildDemoStore();
+    old.chats[0].draft = 'written back when it was called Messages';
+    await seedLegacyDb(old, Date.now());
+
+    const loaded = await loadState();
+    expect(loaded.chats[0].draft).toBe('written back when it was called Messages');
+
+    // and it is rewritten under the new name, so the old one can go
+    await new Promise((r) => setTimeout(r, 20));
+    const env = (await idbGet('state')) as { state: { chats: { draft: string }[] } };
+    expect(env.state.chats[0].draft).toBe('written back when it was called Messages');
+  });
+
+  it('still reads an account left under the old localStorage key', async () => {
+    const old = buildDemoStore();
+    old.chats[0].draft = 'older still';
+    localStorage.setItem(
+      'messages.app.state',
+      JSON.stringify({ version: 3, savedAt: Date.now(), state: old }),
+    );
+
+    const loaded = await loadState();
+    expect(loaded.chats[0].draft).toBe('older still');
+  });
+
+  it('does not invent an empty legacy database on a fresh install', async () => {
+    const loaded = await loadState();
+    expect(loaded.chats).toEqual([]);
+
+    // fake-indexeddb exposes databases(); nothing should have been created
+    const names = (await indexedDB.databases()).map((d) => d.name);
+    expect(names).not.toContain('messages');
+  });
+});

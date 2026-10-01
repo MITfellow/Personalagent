@@ -3203,3 +3203,62 @@
 .storage-box .btn {
   align-self: flex-start;
 }
+
+/* ───────────────── forwarding ───────────────── */
+.forwarded-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 0 4px 2px;
+}
+.forwarded-tag.out {
+  align-self: flex-end;
+}
+.fwd-preview {
+  display: flex;
+  padding: 2px 0 2px;
+}
+.fwd-quote {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: var(--bubble-in);
+  border-radius: 12px;
+  padding: 7px 11px;
+  /* a forwarded wall of text should not push the picker off screen */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────────────── brand ───────────────── */
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.wordmark-text {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.about-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.about-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.about-meta {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+}

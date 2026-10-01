@@ -1,15 +1,16 @@
-# Messages — a full iMessage clone
+# Veo
 
-A pixel-faithful recreation of Apple Messages (macOS/iOS) built with React + TypeScript + Vite.
-No backend required: conversations, contacts and settings live in `localStorage`, and the people
-you talk to reply on their own through a small persona-driven engine.
+A complete, installable messaging app for the web, built with React + TypeScript + Vite,
+styled after macOS Messages (Tahoe). There is no backend and no account: every conversation,
+photo and file lives in IndexedDB on your own device, and the people you talk to reply on
+their own through a small persona-driven engine.
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # production bundle in dist/
 npm run preview    # serve the built bundle (service worker active)
-npm test           # 48 unit + integration tests
+npm test           # 129 unit + integration tests
 npm run typecheck  # tsc --build
 npm run lint       # oxlint
 ```
@@ -17,7 +18,7 @@ npm run lint       # oxlint
 ---
 
 ## Chrome
-Rebuilt to match macOS Messages (Tahoe) exactly: rounded window with a shadow on a desktop
+Matched to macOS Messages (Tahoe): rounded window with a shadow on a desktop
 backdrop, traffic lights, a filter button, the floating glass **compose** and **FaceTime**
 buttons, and the translucent thread header — centered avatar with the name pill underneath that
 messages blur beneath as they scroll. Conversation rows use avatar-inset hairline separators and a
@@ -355,7 +356,7 @@ The manifest was the minimum a browser needs to stop nagging. It now describes
 an app:
 
 - **`file_handlers`** — once installed, double-clicking a photo, video, PDF or
-  text file in Finder or Explorer opens it *in Messages*, already staged in the
+  text file in Finder or Explorer opens it *in Veo*, already staged in the
   composer. `consumeLaunchFiles()` drains the `launchQueue` and hands the files
   to the same `addFiles` the picker uses.
 - **`share_target`** — the app appears in the OS share sheet.
@@ -367,11 +368,38 @@ an app:
 Settings → Storage shows how much room the data actually takes, what the browser
 will grant, and a **Keep my data safe** button that calls
 `navigator.storage.persist()` so an eviction under disk pressure cannot quietly
-delete the conversation. Next to it is an **Install** button, which appears only
+delete the conversation. Next to it is an **Install Veo** button, which appears only
 when `beforeinstallprompt` has fired — the event is captured in `main.tsx`
 *before* React mounts, because it arrives early and only once; when it never
 comes, the panel explains the browser's manual route instead of showing a button
 that does nothing.
+
+### Forwarding
+
+Right-click any bubble → **Forward…** and pick a conversation. The picker shows the
+message being passed on (so you cannot forward the wrong one), excludes the thread you
+are already in, and orders the rest by recent activity.
+
+Forwarding re-sends rather than moves: the copy goes through the ordinary `send` path, so
+it gets its own id, its own delivery lifecycle and the recipient's reply — a message that
+skipped all that would sit in the thread as a permanent "Sending…". Attachments are
+carried by reference to the same `Blob`, so forwarding a 40 MB video costs nothing extra
+and the copy is still downloadable. The result is marked **Forwarded** above the bubble,
+and the app follows you into the conversation it landed in.
+
+### The name
+
+The app was called Messages; it is called **Veo** now, and the rename reaches the title,
+the manifest, the icons, the composer placeholder, the service-worker cache and the
+storage keys. Renaming a database is not a file move — the old one would simply have
+been orphaned — so a first load after the rename looks for the `messages` database,
+copies the account into `veo`, and deletes the old one. The pre-rename `localStorage`
+keys are still read for the same reason.
+
+`indexedDB.open` *creates* whatever it cannot find, so the probe would otherwise conjure
+an empty `messages` database on every fresh install; the upgrade callback detects that
+case and deletes what it just made. There is a test asserting exactly that, because it
+is the kind of thing that goes unnoticed for a year.
 
 ## Real devices
 
