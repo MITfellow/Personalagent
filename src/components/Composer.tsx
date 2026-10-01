@@ -5,6 +5,9 @@ import { useStore } from '../lib/context';
 import { EMOJI } from '../data/emoji';
 import { Floating } from './Floating';
 import { IconCamera, IconMic, IconPhotos, IconPlus, IconSend, IconSmiley, IconSparkle, IconWave, IconX } from './Icons';
+import { AttachTray, type Staged } from './AttachTray';
+import { Lightbox } from './Lightbox';
+import { MAX_FILES, decodeImage, fileKey, humanSize, isImageFile, rejectReason } from '../lib/files';
 
 const STOCK_PHOTOS = ['/photos/golden-hour.jpg', '/photos/ceramics.jpg'];
 
@@ -21,7 +24,16 @@ export function Composer({
   clearReply: () => void;
 }) {
   const { state, dispatch, send, chatTitle } = useStore();
-  const [atts, setAtts] = useState<Attachment[]>([]);
+  const [staged, setStaged] = useState<Staged[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [zoom, setZoom] = useState<string | null>(null);
+  const dragDepth = useRef(0);
+  // mirrors `staged` so addFiles can compute the next tray synchronously —
+  // collecting notices inside a setState updater loses them, because the
+  // updater runs after the call that would have read them (and twice in
+  // StrictMode)
+  const stagedRef = useRef<Staged[]>([]);
   const [subject, setSubject] = useState<string | null>(null);
   const [bubbleFx, setBubbleFx] = useState<BubbleEffect>('none');
   const [screenFx, setScreenFx] = useState<ScreenEffect>('none');
@@ -51,19 +63,25 @@ export function Composer({
 
   const setDraft = (value: string) => dispatch({ type: 'draft', chatId: chat.id, value });
 
-  const canSend = draft.trim().length > 0 || atts.length > 0;
+  useEffect(() => {
+    stagedRef.current = staged;
+  }, [staged]);
+
+  const ready = staged.filter((f) => f.status === 'ready' && f.att);
+  const canSend = draft.trim().length > 0 || ready.length > 0;
 
   const doSend = () => {
     if (!canSend) return;
     send(chat.id, {
       text: draft.trim(),
       subject: subject?.trim() || undefined,
-      attachments: atts,
+      attachments: ready.map((f) => f.att!),
       replyTo: replyTo?.id,
       bubbleEffect: bubbleFx,
       screenEffect: screenFx,
     });
-    setAtts([]);
+    setStaged([]);
+    setNotice(null);
     setSubject(null);
     setBubbleFx('none');
     setScreenFx('none');
@@ -79,24 +97,123 @@ export function Composer({
     if (e.key === 'Escape' && replyTo) clearReply();
   };
 
-  const addFiles = (files: FileList | null) => {
+  /** stage something we built ourselves (a memo, a stock photo, a location) */
+  const stage = (att: Attachment, name: string, bytes = 0) =>
+    setStaged((a) => [
+      ...a,
+      {
+        id: att.id,
+        name,
+        bytes,
+        status: 'ready',
+        att,
+        preview: att.kind === 'image' ? att.src : undefined,
+      },
+    ]);
+
+  /**
+   * Stage files for sending. Images are decoded and downscaled off the main
+   * send path so the tray can show a real thumbnail (and so a 12-megapixel
+   * photo doesn't go into localStorage at full size); everything else lands
+   * immediately as a typed chip.
+   */
+  const addFiles = (files: FileList | File[] | null) => {
     if (!files) return;
-    Array.from(files)
-      .slice(0, 6)
-      .forEach((f) => {
-        if (f.type.startsWith('image/')) {
-          const reader = new FileReader();
-          reader.onload = () =>
-            setAtts((a) => [...a, { id: attId(), kind: 'image', src: String(reader.result) }]);
-          reader.readAsDataURL(f);
-        } else {
-          setAtts((a) => [
-            ...a,
-            { id: attId(), kind: 'file', name: f.name, size: `${(f.size / 1024 / 1024).toFixed(1)} MB` },
-          ]);
+    const incoming = Array.from(files);
+    if (!incoming.length) return;
+
+    const notes: string[] = [];
+    const prev = stagedRef.current;
+    const commit = (next: Staged[]) => {
+      stagedRef.current = next;
+      setStaged(next);
+      setNotice(notes[0] ?? null);
+    };
+
+    {
+      const seen = new Set(prev.map((f) => fileKey({ name: f.name, size: f.bytes })));
+      const room = MAX_FILES - prev.length;
+      if (room <= 0) {
+        notes.push(`You can attach ${MAX_FILES} files at a time`);
+        commit(prev);
+        return;
+      }
+
+      const next: Staged[] = [];
+      let skipped = 0;
+      for (const file of incoming) {
+        if (next.length >= room) {
+          skipped++;
+          continue;
         }
-      });
+        const key = fileKey(file);
+        if (seen.has(key)) {
+          notes.push(`${file.name} is already attached`);
+          continue;
+        }
+        seen.add(key);
+
+        const id = attId();
+        const bad = rejectReason(file);
+        if (bad) {
+          next.push({ id, name: file.name, bytes: file.size, status: 'error', error: bad });
+          continue;
+        }
+
+        if (isImageFile(file.type, file.name)) {
+          next.push({ id, name: file.name, bytes: file.size, status: 'loading' });
+          void decodeImage(file)
+            .then(({ src, width, height }) =>
+              setStaged((cur) =>
+                cur.map((f) =>
+                  f.id === id
+                    ? {
+                        ...f,
+                        status: 'ready',
+                        preview: src,
+                        att: {
+                          id,
+                          kind: 'image',
+                          src,
+                          name: file.name,
+                          size: humanSize(file.size),
+                          width: width || undefined,
+                          height: height || undefined,
+                        },
+                      }
+                    : f,
+                ),
+              ),
+            )
+            .catch(() =>
+              setStaged((cur) =>
+                cur.map((f) =>
+                  f.id === id ? { ...f, status: 'error', error: "Couldn't read this image" } : f,
+                ),
+              ),
+            );
+        } else {
+          next.push({
+            id,
+            name: file.name,
+            bytes: file.size,
+            status: 'ready',
+            att: { id, kind: 'file', name: file.name, size: humanSize(file.size) },
+          });
+        }
+      }
+
+      if (skipped) notes.push(`${skipped} file${skipped > 1 ? 's' : ''} skipped — ${MAX_FILES} at a time`);
+      commit([...prev, ...next]);
+    }
   };
+
+  // the notice is transient; it should never outstay the thing it describes
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
 
   const openPop = (kind: 'emoji' | 'apps' | 'fx') => (e: React.MouseEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -113,10 +230,22 @@ export function Composer({
 
   return (
     <div
-      className="composer-wrap"
+      className={`composer-wrap ${dragging ? 'dropping' : ''}`}
+      onDragEnter={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        dragDepth.current++;
+        setDragging(true);
+      }}
       onDragOver={(e) => e.preventDefault()}
+      onDragLeave={() => {
+        // dragleave fires for every child; only the last one counts
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (!dragDepth.current) setDragging(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
+        dragDepth.current = 0;
+        setDragging(false);
         addFiles(e.dataTransfer.files);
       }}
       onMouseDown={(e) => {
@@ -170,18 +299,16 @@ export function Composer({
         </div>
       )}
 
-      {atts.length > 0 && (
-        <div className="attach-strip">
-          {atts.map((a) => (
-            <div className="attach-chip" key={a.id}>
-              {a.kind === 'image' ? <img src={a.src} alt="" /> : <span>{a.name ?? a.kind}</span>}
-              <button className="x" onClick={() => setAtts((x) => x.filter((y) => y.id !== a.id))}>
-                <IconX size={9} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <AttachTray
+        items={staged}
+        notice={notice}
+        onRemove={(id) => setStaged((x) => x.filter((y) => y.id !== id))}
+        onClear={() => {
+          setStaged([]);
+          setNotice(null);
+        }}
+        onPreview={setZoom}
+      />
 
       {recording > 0 && (
         <div className="reply-banner" style={{ background: 'rgba(255,59,48,.14)' }}>
@@ -192,15 +319,15 @@ export function Composer({
           <button
             className="btn"
             onClick={() => {
-              setAtts((a) => [
-                ...a,
+              stage(
                 {
                   id: attId(),
                   kind: 'audio',
                   duration: recording,
                   waveform: Array.from({ length: 34 }, () => 0.15 + Math.random() * 0.85),
                 },
-              ]);
+                `Voice memo · ${recording}s`,
+              );
               setRecording(0);
             }}
           >
@@ -317,10 +444,8 @@ export function Composer({
             <button
               className="app-tile"
               onClick={() => {
-                setAtts((a) => [
-                  ...a,
-                  { id: attId(), kind: 'image', src: STOCK_PHOTOS[a.length % STOCK_PHOTOS.length] },
-                ]);
+                const src = STOCK_PHOTOS[staged.length % STOCK_PHOTOS.length];
+                stage({ id: attId(), kind: 'image', src }, src.split('/').pop() ?? 'Photo');
                 closePop();
               }}
             >
@@ -344,8 +469,7 @@ export function Composer({
             <button
               className="app-tile"
               onClick={() => {
-                setAtts((a) => [
-                  ...a,
+                stage(
                   {
                     id: attId(),
                     kind: 'link',
@@ -354,7 +478,8 @@ export function Composer({
                     domain: 'maps.example',
                     description: 'Shared from Maps · accurate to 10 m',
                   },
-                ]);
+                  'My Current Location',
+                );
                 closePop();
               }}
             >
@@ -442,6 +567,20 @@ export function Composer({
       )}
 
       <div className="send-hint">{canSend ? 'Return to send · ⇧Return for a new line' : `To: ${chatTitle(chat)}`}</div>
+
+      {dragging && (
+        <div className="drop-veil" aria-hidden="true">
+          <div className="drop-card">
+            <IconPhotos size={22} />
+            <div className="drop-title">Drop to attach</div>
+            <div className="drop-sub">Up to {MAX_FILES} files</div>
+          </div>
+        </div>
+      )}
+
+      {zoom && (
+        <Lightbox items={[{ src: zoom, caption: 'Not sent yet' }]} startSrc={zoom} onClose={() => setZoom(null)} />
+      )}
     </div>
   );
 }

@@ -42,6 +42,8 @@ bubbles carry the two trailing dots that make them read as tiny speech bubbles.
 
 ![Memoji studio](docs/memoji-studio.png)
 
+![Attachment staging](docs/attachments.png)
+
 ## What's in it
 
 ### Conversation list
@@ -73,6 +75,27 @@ bubbles carry the two trailing dots that make them read as tiny speech bubbles.
 - A floating **jump-to-latest** button appears the moment you scroll away from the bottom
 - **Drop files anywhere on the thread** to send them — the thread outlines itself and shows a
   "Drop to send" card while you drag
+
+### Attachments
+Drag files anywhere over the composer and a dashed **Drop to attach** target appears; you can also
+use the **+** tray, the file picker, or paste straight from the clipboard. Everything lands in a
+staging tray *before* it is sent:
+
+- images get a real thumbnail, documents get a tinted type badge (PDF red, Excel green, Zip grey…)
+- each tile carries the true filename — middled-elided, extension intact — and a human size
+- a running **"3 attachments · 99 KB"** header with **Remove all**
+- click a staged photo to Quick Look it, captioned *Not sent yet*
+- oversized (>8 MB) and empty files are refused **on the tile, with the reason**, instead of
+  disappearing; the count and the send only ever include the good ones
+- re-adding the same file is de-duped with a notice rather than stacking twice
+- a 10-file cap, surfaced when you exceed it
+
+Photos are decoded, clamped to a 1600px long edge and re-encoded (PNG kept for transparency, JPEG
+otherwise) before they reach the store, because every attachment is persisted to localStorage — a
+couple of phone photos at full resolution would exhaust the quota on the first send. The stored
+`width`/`height` always describe the pixels actually saved: an earlier cut kept the *original*
+bytes when the re-encode came out larger, which left the metadata describing an image that was no
+longer there.
 
 ### Composer
 - Auto-growing field, ↩ to send, ⇧↩ for a newline, per-conversation drafts that persist

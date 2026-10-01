@@ -2660,3 +2660,192 @@
 .studio-delete {
   margin-right: auto;
 }
+
+/* ---------- attachment staging tray ---------- */
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0 0 8px;
+  padding: 9px 10px 10px;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--hairline-soft);
+}
+.stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.stage-total {
+  color: var(--text-3, var(--text-2));
+}
+.stage-clear {
+  font-size: 11.5px;
+  color: var(--blue);
+}
+.stage-notice {
+  font-size: 11.5px;
+  color: var(--orange, #ff9f0a);
+  background: color-mix(in srgb, var(--orange, #ff9f0a) 12%, transparent);
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.stage-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.stage-tile {
+  position: relative;
+  flex: none;
+  width: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.stage-thumb {
+  position: relative;
+  width: 92px;
+  height: 68px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  border: 0.5px solid var(--hairline);
+}
+.stage-thumb[role='button'] {
+  cursor: zoom-in;
+}
+.stage-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.stage-ext {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+.stage-tile.loading .stage-thumb {
+  opacity: 0.75;
+}
+.stage-spinner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: stage-spin 0.7s linear infinite;
+}
+@keyframes stage-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.stage-tile.error .stage-thumb {
+  background: color-mix(in srgb, var(--red) 16%, var(--bg));
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+}
+.stage-warn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--red);
+}
+.stage-meta {
+  min-width: 0;
+}
+.stage-name {
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-size {
+  font-size: 10.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-size.bad {
+  color: var(--red);
+}
+.stage-x {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1.5px solid var(--bg-elevated);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.stage-tile:hover .stage-x,
+.stage-x:focus-visible {
+  opacity: 1;
+}
+
+/* ---------- drag & drop veil ---------- */
+.composer-wrap.dropping {
+  position: relative;
+}
+.drop-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+.drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 14px 26px;
+  border-radius: 14px;
+  color: var(--blue);
+  background: var(--bg-elevated);
+  border: 1.5px dashed var(--blue);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16);
+}
+.drop-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.drop-sub {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+@media (max-width: 760px) {
+  .stage-tile,
+  .stage-thumb {
+    width: 78px;
+  }
+  .stage-thumb {
+    height: 58px;
+  }
+}
