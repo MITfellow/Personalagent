@@ -121,7 +121,7 @@ export interface Store {
   chats: Chat[];
   messages: Message[];
   activeChatId: string | null;
-  me: { name: string; handle: string };
+  me: { name: string; handle: string; avatar?: string };
   settings: {
     theme: 'light' | 'dark' | 'system';
     sounds: boolean;

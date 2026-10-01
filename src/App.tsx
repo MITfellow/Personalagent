@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StoreProvider } from './lib/store';
 import { useStore } from './lib/context';
 import { Sidebar } from './components/Sidebar';
 import { ChatView } from './components/ChatView';
 import { DetailsPanel } from './components/DetailsPanel';
+import { Lightbox, type LightboxItem } from './components/Lightbox';
 import { Effects } from './components/Effects';
 import { NewMessageModal, SettingsModal, ShortcutsModal } from './components/Modals';
 import { applyUpdate } from './lib/sw';
@@ -31,6 +32,19 @@ function Shell() {
   }, []);
 
   const showDetails = state.settings.showDetails && !!activeChat;
+
+  // the details panel's photo grid pages through the same chat's photos
+  const detailPhotos = useMemo<LightboxItem[]>(() => {
+    if (!activeChat) return [];
+    return messagesFor(activeChat.id).flatMap((m) =>
+      (m.attachments ?? [])
+        .filter((a) => a.kind === 'image' && a.src)
+        .map((a) => ({
+          src: a.src!,
+          caption: m.authorId === 'me' ? 'You' : state.contacts[m.authorId]?.name,
+        })),
+    );
+  }, [activeChat, messagesFor, state.contacts]);
   const unread = state.chats.reduce((n, c) => n + (c.muted ? 0 : c.unread), 0);
 
   // on phones, *opening* a conversation slides the list away (but not on first
@@ -134,9 +148,11 @@ function Shell() {
       {modal === 'settings' && <SettingsModal onClose={() => setModal(null)} />}
       {modal === 'shortcuts' && <ShortcutsModal onClose={() => setModal(null)} />}
       {zoom && (
-        <div className="lightbox" onClick={() => setZoom(null)}>
-          <img src={zoom} alt="" />
-        </div>
+        <Lightbox
+          items={detailPhotos.length ? detailPhotos : [{ src: zoom }]}
+          startSrc={zoom}
+          onClose={() => setZoom(null)}
+        />
       )}
       </div>
     </div>

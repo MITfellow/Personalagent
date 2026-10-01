@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Attachment, Chat, Message } from '../types';
 import { useStore } from '../lib/context';
-import { needsSeparator, sameGroup, separatorStamp, timeOfDay } from '../lib/time';
+import { needsSeparator, sameGroup, separatorStamp, timeOfDay, separatorStamp as stampOf } from '../lib/time';
 import { Avatar } from './Avatar';
 import { Bubble } from './Bubble';
+import { Lightbox, type LightboxItem } from './Lightbox';
 
 export function MessageList({
   chat,
@@ -57,6 +58,20 @@ export function MessageList({
     });
   }
   const people = chatContacts(chat);
+
+  // every photo in the thread, so Quick Look can page through them
+  const photos = useMemo<LightboxItem[]>(
+    () =>
+      all.flatMap((m) =>
+        (m.attachments ?? [])
+          .filter((a) => a.kind === 'image' && a.src)
+          .map((a) => ({
+            src: a.src!,
+            caption: `${m.authorId === 'me' ? 'You' : state.contacts[m.authorId]?.name ?? 'Unknown'} · ${stampOf(m.at)}`,
+          })),
+      ),
+    [all, state.contacts],
+  );
   const isGroup = people.length > 1;
 
   const didInitMarker = useRef(false);
@@ -310,11 +325,7 @@ export function MessageList({
         </div>
       )}
 
-      {zoom && (
-        <div className="lightbox" onClick={() => setZoom(null)}>
-          <img src={zoom} alt="" />
-        </div>
-      )}
+      {zoom && <Lightbox items={photos} startSrc={zoom} onClose={() => setZoom(null)} />}
     </div>
   );
 }

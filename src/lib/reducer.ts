@@ -1,4 +1,4 @@
-import type { Chat, Message, Store, Tapback } from '../types';
+import type { Chat, Contact, Message, Store, Tapback } from '../types';
 
 export type Action =
   | { type: 'select'; chatId: string | null }
@@ -17,6 +17,10 @@ export type Action =
   | { type: 'settings'; patch: Partial<Store['settings']> }
   | { type: 'rename'; chatId: string; name: string }
   | { type: 'read-all'; chatId: string }
+  | { type: 'me'; patch: Partial<Store['me']> }
+  | { type: 'add-contact'; contact: Contact }
+  | { type: 'update-contact'; id: string; patch: Partial<Contact> }
+  | { type: 'delete-contact'; id: string }
   | { type: 'replace'; store: Store };
 
 export function reducer(state: Store, action: Action): Store {
@@ -124,6 +128,36 @@ export function reducer(state: Store, action: Action): Store {
       };
     case 'new-chat':
       return { ...state, chats: [action.chat, ...state.chats], activeChatId: action.chat.id };
+    case 'me':
+      return { ...state, me: { ...state.me, ...action.patch } };
+
+    case 'add-contact':
+      return { ...state, contacts: { ...state.contacts, [action.contact.id]: action.contact } };
+
+    case 'update-contact': {
+      const current = state.contacts[action.id];
+      if (!current) return state;
+      return { ...state, contacts: { ...state.contacts, [action.id]: { ...current, ...action.patch, id: action.id } } };
+    }
+
+    case 'delete-contact': {
+      if (!state.contacts[action.id]) return state;
+      const contacts = { ...state.contacts };
+      delete contacts[action.id];
+      // every thread that person was part of goes with them
+      const doomed = new Set(
+        state.chats.filter((c) => c.participantIds.includes(action.id)).map((c) => c.id),
+      );
+      const chats = state.chats.filter((c) => !doomed.has(c.id));
+      return {
+        ...state,
+        contacts,
+        chats,
+        messages: state.messages.filter((m) => !doomed.has(m.chatId)),
+        activeChatId: doomed.has(state.activeChatId ?? '') ? null : state.activeChatId,
+      };
+    }
+
     case 'read-all':
       return {
         ...state,

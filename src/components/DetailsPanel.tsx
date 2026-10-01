@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Chat } from '../types';
 import { useStore } from '../lib/context';
 import { Avatar, ChatAvatar } from './Avatar';
+import { MemojiPicker } from './MemojiPicker';
 import { IconInfo, IconMuted, IconPhone, IconVideo } from './Icons';
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -17,6 +18,7 @@ export function DetailsPanel({ chat, onZoom }: { chat: Chat; onZoom: (src: strin
   const people = chatContacts(chat);
   const isGroup = people.length > 1;
   const [renaming, setRenaming] = useState(false);
+  const [pickingMemoji, setPickingMemoji] = useState(false);
   const [name, setName] = useState(chat.name ?? '');
 
   const photos = useMemo(
@@ -35,7 +37,22 @@ export function DetailsPanel({ chat, onZoom }: { chat: Chat; onZoom: (src: strin
   return (
     <aside className="details">
       <div className="hero">
-        <ChatAvatar chat={chat} contacts={people} size={76} />
+        {isGroup ? (
+          <ChatAvatar chat={chat} contacts={people} size={76} />
+        ) : (
+          <button
+            className="hero-avatar"
+            onClick={() => setPickingMemoji((v) => !v)}
+            title="Choose a Memoji"
+            aria-label={`Choose a Memoji for ${people[0]?.name ?? 'this contact'}`}
+            aria-expanded={pickingMemoji}
+          >
+            <Avatar contact={people[0]} size={76} />
+            <span className="hero-avatar-edit" aria-hidden="true">
+              Edit
+            </span>
+          </button>
+        )}
         {renaming ? (
           <input
             autoFocus
@@ -92,6 +109,20 @@ export function DetailsPanel({ chat, onZoom }: { chat: Chat; onZoom: (src: strin
           {!isGroup && people[0]?.bio ? ` · ${people[0].bio}` : ''}
         </div>
       </div>
+
+      {pickingMemoji && !isGroup && people[0] && (
+        <MemojiPicker
+          value={people[0].avatar}
+          onPick={(avatar) => {
+            dispatch({ type: 'update-contact', id: people[0].id, patch: { avatar } });
+            setPickingMemoji(false);
+          }}
+          onClear={() => {
+            dispatch({ type: 'update-contact', id: people[0].id, patch: { avatar: undefined } });
+            setPickingMemoji(false);
+          }}
+        />
+      )}
 
       <div className="quick-row">
         {[

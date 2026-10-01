@@ -1,4 +1,6 @@
 import type { Chat, Contact } from '../types';
+import { Memoji } from './Memoji';
+import { parseMemoji } from '../lib/memoji';
 
 export function Avatar({
   contact,
@@ -12,8 +14,9 @@ export function Avatar({
   if (!contact) {
     return <div className={`avatar ${className}`} style={{ background: '#8e8e93' }} />;
   }
+  const memoji = parseMemoji(contact.avatar);
   const style: React.CSSProperties = {
-    background: `linear-gradient(160deg, ${contact.color[0]}, ${contact.color[1]})`,
+    background: memoji ? 'transparent' : `linear-gradient(160deg, ${contact.color[0]}, ${contact.color[1]})`,
   };
   if (size) {
     style.width = size;
@@ -22,7 +25,13 @@ export function Avatar({
   }
   return (
     <div className={`avatar ${className}`} style={style} title={contact.name}>
-      {contact.avatar ? <img src={contact.avatar} alt="" /> : contact.initials}
+      {memoji ? (
+        <Memoji spec={memoji} size={size} />
+      ) : contact.avatar ? (
+        <img src={contact.avatar} alt="" />
+      ) : (
+        contact.initials
+      )}
     </div>
   );
 }

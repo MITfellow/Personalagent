@@ -38,6 +38,8 @@ tile in a little white balloon, the newest tapback stuck to the avatar as a mini
 beside the name when unread, and a filled blue rounded tile for the open conversation. Tapbacks on
 bubbles carry the two trailing dots that make them read as tiny speech bubbles.
 
+![Memoji picker](docs/memoji-pass.png)
+
 ## What's in it
 
 ### Conversation list
@@ -82,6 +84,28 @@ bubbles carry the two trailing dots that make them read as tiny speech bubbles.
 ### Details panel (⌘I)
 Contact card, quick actions, Hide Alerts / read receipts / auto-reply switches, group roster,
 double-click to rename a group (posts "You named the conversation …"), shared photos grid, links.
+Click the hero avatar to give that person a Memoji.
+
+### Memoji
+Twelve illustrated characters — Ari, Milo, Zoe, Kai, Nova, Rey, Sol, Iris, Theo, Luna, Pip and
+Bolt — drawn as **inline SVG** in `src/lib/memoji.ts`: no image files, no network, no CDN, so they
+render identically at 24 px in the sidebar and at 76 px in the details hero, in either theme.
+
+Pick one from the Apple-style grid (round tiles, names underneath, blue selected tile) in two
+places: **Settings → Your Memoji** for yourself, and the **details panel hero** for any contact.
+The choice is stored on the record as `memoji:<id>` and immediately replaces the initials
+everywhere that person appears — pinned grid, conversation rows, group avatar stacks, thread
+header, details hero. *Use initials instead* undoes it.
+
+### Quick Look
+Click any photo — in a bubble or in the details grid — to open a full-screen viewer: ←/→ step
+through every photo in that thread (wrapping at both ends), Home/End jump to the first and last,
+Esc closes, and the bar carries an "N of M" counter, the sender and timestamp, and a download
+button.
+
+### Ad-hoc recipients
+Typing a phone number or email that matches nobody in the directory offers *Add as a new contact*
+in New Message, so you can start a thread with someone who isn't in the list yet.
 
 ### System
 - Light / Dark / System themes with full iOS token set, translucent toolbars

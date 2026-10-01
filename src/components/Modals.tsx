@@ -1,7 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/context';
 import { Avatar } from './Avatar';
-import { IconCheck, IconSearch } from './Icons';
+import { MemojiPicker } from './MemojiPicker';
+import { Memoji } from './Memoji';
+import { parseMemoji } from '../lib/memoji';
+import { isAddressable, makeContact } from '../lib/contacts';
+import { IconCheck, IconPlus, IconSearch } from './Icons';
 
 export function NewMessageModal({ onClose }: { onClose: () => void }) {
   const { state, startChatWith, dispatch } = useStore();
@@ -16,11 +20,28 @@ export function NewMessageModal({ onClose }: { onClose: () => void }) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [state.contacts, q]);
 
-  const go = () => {
-    if (!picked.length) return;
-    const id = startChatWith(picked);
+  const typed = q.trim();
+  // a number or an email that matches nobody is still a valid destination
+  const adHoc =
+    isAddressable(typed) &&
+    !Object.values(state.contacts).some((c) => c.handle.replace(/\s/g, '') === typed.replace(/\s/g, ''));
+
+  const open = (ids: string[]) => {
+    const id = startChatWith(ids);
     dispatch({ type: 'select', chatId: id });
     onClose();
+  };
+
+  const messageTyped = () => {
+    const contact = makeContact({ handle: typed });
+    dispatch({ type: 'add-contact', contact });
+    open([...picked, contact.id]);
+  };
+
+  const go = () => {
+    if (adHoc) return messageTyped();
+    if (!picked.length) return;
+    open(picked);
   };
 
   return (
@@ -36,6 +57,17 @@ export function NewMessageModal({ onClose }: { onClose: () => void }) {
             <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
               Group message with {picked.length} people
             </div>
+          )}
+          {adHoc && (
+            <button className="contact-pick adhoc" onClick={messageTyped}>
+              <span className="adhoc-glyph" aria-hidden="true">
+                <IconPlus size={16} />
+              </span>
+              <div style={{ flex: 1 }}>
+                <div className="nm">Message “{typed}”</div>
+                <div className="hd">Add as a new contact</div>
+              </div>
+            </button>
           )}
           {list.map((c) => {
             const on = picked.includes(c.id);
@@ -59,9 +91,11 @@ export function NewMessageModal({ onClose }: { onClose: () => void }) {
               </button>
             );
           })}
-          {list.length === 0 && (
+          {list.length === 0 && !adHoc && (
             <div style={{ fontSize: 12.5, color: 'var(--text-2)', padding: '8px 4px' }}>
-              No contact matches “{q}”.
+              {q.trim()
+                ? 'No contact matches — type a full phone number or email to message someone new.'
+                : 'No contacts yet. Type a phone number or email to start.'}
             </div>
           )}
         </div>
@@ -69,7 +103,7 @@ export function NewMessageModal({ onClose }: { onClose: () => void }) {
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" onClick={go} disabled={!picked.length}>
+          <button className="btn primary" onClick={go} disabled={!picked.length && !adHoc}>
             Start {picked.length > 1 ? 'Group' : 'Chat'}
           </button>
         </footer>
@@ -147,12 +181,46 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const s = state.settings;
   const fileRef = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const myMemoji = parseMemoji(state.me.avatar);
+  const [editingMemoji, setEditingMemoji] = useState(false);
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <header>Settings</header>
         <div className="body">
-          <div className="panel-label">Appearance</div>
+          <div className="panel-label">Your Memoji</div>
+          <button
+            className="me-card"
+            onClick={() => setEditingMemoji((v) => !v)}
+            aria-expanded={editingMemoji}
+          >
+            <div className="me-avatar">
+              {myMemoji ? (
+                <Memoji spec={myMemoji} size={52} />
+              ) : (
+                <div className="avatar" style={{ width: 52, height: 52, fontSize: 19, background: 'linear-gradient(160deg,#9ea3ab,#73787f)' }}>
+                  ME
+                </div>
+              )}
+            </div>
+            <div className="me-meta">
+              <div className="nm">{state.me.name}</div>
+              <div className="hd">{state.me.handle}</div>
+            </div>
+            <span className="me-edit">{editingMemoji ? 'Done' : 'Edit'}</span>
+          </button>
+          {editingMemoji && (
+            <MemojiPicker
+              label=""
+              value={state.me.avatar}
+              onPick={(avatar) => dispatch({ type: 'me', patch: { avatar } })}
+              onClear={() => dispatch({ type: 'me', patch: { avatar: undefined } })}
+            />
+          )}
+
+          <div className="panel-label" style={{ marginTop: 6 }}>
+            Appearance
+          </div>
           <Seg
             value={s.theme}
             options={[
