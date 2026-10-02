@@ -7,7 +7,6 @@ import { Memoji } from './Memoji';
 import { useMemojiSpec } from '../lib/useMemoji';
 import { isAddressable, makeContact } from '../lib/contacts';
 import { IconCheck, IconPlus, IconSearch } from './Icons';
-import { Logo } from './Logo';
 
 /* Injected at build time (see vite.config.ts). The guard keeps the component
    renderable under any runner that does not define them. */
@@ -329,7 +328,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             About
           </div>
           <div className="about-row">
-            <Logo size={44} title="Veo" />
             <div>
               <div className="about-name">Veo</div>
               <div className="about-meta">

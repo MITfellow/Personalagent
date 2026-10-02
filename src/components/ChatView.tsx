@@ -23,7 +23,7 @@ export function ChatView({ onBack, onToggleDetails }: { onBack: () => void; onTo
     return (
       <section className="chat" id="main" aria-label="Conversation">
         <div className="no-chat">
-          <Wordmark size={46} />
+          <Wordmark size={40} />
           <div>
             <div style={{ fontSize: 15, color: 'var(--text-2)' }}>No Conversation Selected</div>
             <div style={{ fontSize: 12.5, marginTop: 4 }}>Pick one on the left, or press ⌘N to start a new one.</div>

@@ -3237,15 +3237,15 @@
 }
 
 /* ───────────────── brand ───────────────── */
-.wordmark {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
 .wordmark-text {
   font-weight: 700;
-  letter-spacing: -0.02em;
+  /* tight tracking is what makes three letters read as a mark */
+  letter-spacing: -0.035em;
   color: var(--text);
+  line-height: 1;
+}
+.wordmark-text.muted {
+  color: var(--text-2);
 }
 .about-row {
   display: flex;

@@ -387,6 +387,16 @@ carried by reference to the same `Blob`, so forwarding a 40 MB video costs nothi
 and the copy is still downloadable. The result is marked **Forwarded** above the bubble,
 and the app follows you into the conversation it landed in.
 
+### The brand is the word
+
+There is no logo. The mark is the name, set bold and tight: `Wordmark` is a span, not
+an SVG, so it inherits the theme's text colour and the system font stack, and it is
+sharp at any size and in any colour scheme for free. The app icons are the same idea
+rasterised — white type on a near-black tile — with one concession to physics: at 32 px
+three letters are an illegible smudge, so the favicon carries just the **V**. The
+maskable icon sets the word smaller and runs the background to the edge, because the
+corners are cropped away.
+
 ### The name
 
 The app was called Messages; it is called **Veo** now, and the rename reaches the title,
